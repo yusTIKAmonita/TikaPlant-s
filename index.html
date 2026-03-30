@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TikaPlant's Dashboard</title>
-    <!-- Library React & Tailwind -->
+    <!-- Library pendukung: React, Babel, & Tailwind -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Firebase Libraries -->
+    <!-- Firebase Libraries (Compat Version) -->
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
@@ -24,7 +24,6 @@
         }
         .fade-in { animation: fadeIn 0.2s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        #root { overflow-x: hidden; }
         .modal-up { animation: modalUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes modalUp { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .selection-bar { animation: slideUp 0.3s ease-out; }
@@ -37,14 +36,26 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, Fragment } = React;
 
-        // Firebase Configuration (Provided by environment)
-        const firebaseConfig = JSON.parse(__firebase_config);
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // Pengaman agar tidak error di Vercel jika config belum ada
+        let db = null;
+        let auth = null;
+        let appId = 'default-app-id';
 
-        // Komponen Ikon SVG
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                db = firebase.firestore();
+                auth = firebase.auth();
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            }
+        } catch (e) {
+            console.warn("Cloud config not found, falling back to offline mode.");
+        }
+
+        // Komponen Ikon SVG (Pasti muncul di HP)
         const Icon = ({ name, size = 18, className = "" }) => {
             const icons = {
                 flower: (
@@ -131,8 +142,12 @@
             const [selectedIds, setSelectedIds] = useState([]);
             const [deleteConfirm, setDeleteConfirm] = useState({ show: false, ids: [], type: null, title: '' });
 
-            // Authentication Effect
+            // Auth Effect
             useEffect(() => {
+                if (!auth) {
+                    setIsLoading(false);
+                    return;
+                }
                 const initAuth = async () => {
                     try {
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -140,36 +155,38 @@
                         } else {
                             await auth.signInAnonymously();
                         }
-                    } catch (error) {
-                        console.error("Auth Error:", error);
-                    }
+                    } catch (e) {}
                 };
                 initAuth();
-                const unsubscribe = auth.onAuthStateChanged((u) => {
-                    setUser(u);
-                });
+                const unsubscribe = auth.onAuthStateChanged(setUser);
                 return () => unsubscribe();
             }, []);
 
-            // Firestore Data Syncing Effect
+            // Data Sync Effect
             useEffect(() => {
-                if (!user) return;
+                if (!db || !user) {
+                    // Jika offline, ambil dari local storage
+                    const localPlants = JSON.parse(localStorage.getItem('plants') || '[]');
+                    const localLogs = JSON.parse(localStorage.getItem('logs') || '[]');
+                    setPlants(localPlants);
+                    setLogs(localLogs);
+                    setIsLoading(false);
+                    return;
+                }
 
                 const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
                 const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
 
-                const unsubPlants = plantsRef.onSnapshot((snapshot) => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setPlants(data);
+                const unsubPlants = plantsRef.onSnapshot((snap) => {
+                    setPlants(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                     setIsLoading(false);
-                }, (error) => console.error("Plants Sync Error:", error));
+                });
 
-                const unsubLogs = logsRef.onSnapshot((snapshot) => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // Sort by date manually as per Rule 2
+                const unsubLogs = logsRef.onSnapshot((snap) => {
+                    const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     data.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
                     setLogs(data);
-                }, (error) => console.error("Logs Sync Error:", error));
+                });
 
                 return () => { unsubPlants(); unsubLogs(); };
             }, [user]);
@@ -192,11 +209,9 @@
 
             const handleSavePlant = async (e) => {
                 e.preventDefault();
-                if (!user) return;
                 const formData = new FormData(e.target);
                 const nama = formData.get('nama');
                 const foto = tempImage || (editingItem ? editingItem.foto : '');
-                
                 const plantData = {
                     nama,
                     varietas: formData.get('varietas'), 
@@ -206,26 +221,35 @@
                     foto 
                 };
 
-                const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
-
-                if (editingItem) {
-                    await plantsRef.doc(editingItem.id).set(plantData, { merge: true });
+                if (db && user) {
+                    const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
+                    if (editingItem) {
+                        await plantsRef.doc(editingItem.id).set(plantData, { merge: true });
+                    } else {
+                        const customId = `${nama.substring(0, 3).toUpperCase()}-${Math.floor(Math.random() * 900) + 100}`;
+                        await plantsRef.doc(customId).set(plantData);
+                    }
                 } else {
-                    const prefix = nama.substring(0, 3).toUpperCase();
-                    const customId = `${prefix}-${Math.floor(Math.random() * 900) + 100}`;
-                    await plantsRef.doc(customId).set(plantData);
+                    // Offline fallback
+                    const newPlants = [...plants];
+                    if (editingItem) {
+                        const idx = newPlants.findIndex(p => p.id === editingItem.id);
+                        newPlants[idx] = { ...editingItem, ...plantData };
+                    } else {
+                        newPlants.push({ id: Date.now().toString(), ...plantData });
+                    }
+                    setPlants(newPlants);
+                    localStorage.setItem('plants', JSON.stringify(newPlants));
                 }
                 closeModals();
             };
 
             const handleSaveLog = async (e) => {
                 e.preventDefault();
-                if (!user) return;
                 const formData = new FormData(e.target);
                 const pId = formData.get('plantId');
                 const kond = formData.get('kondisi');
                 const foto = tempImage || (editingItem ? editingItem.foto : '');
-                
                 const logData = {
                     plantId: pId,
                     tanggal: formData.get('tanggal'), 
@@ -236,70 +260,71 @@
                     foto
                 };
 
-                const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
-                const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
-
-                if (editingItem) {
-                    await logsRef.doc(editingItem.id).set(logData, { merge: true });
+                if (db && user) {
+                    const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
+                    const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
+                    if (editingItem) {
+                        await logsRef.doc(editingItem.id).set(logData, { merge: true });
+                    } else {
+                        await logsRef.add(logData);
+                    }
+                    await plantsRef.doc(pId).set({ status: kond === 'Mati' ? 'Mati' : 'Hidup' }, { merge: true });
                 } else {
-                    await logsRef.add(logData);
+                    // Offline fallback
+                    const newLogs = [...logs];
+                    if (editingItem) {
+                        const idx = newLogs.findIndex(l => l.id === editingItem.id);
+                        newLogs[idx] = { ...editingItem, ...logData };
+                    } else {
+                        newLogs.push({ id: Date.now().toString(), ...logData });
+                    }
+                    setLogs(newLogs);
+                    localStorage.setItem('logs', JSON.stringify(newLogs));
                 }
-                
-                // Update plant status based on log
-                await plantsRef.doc(pId).set({ status: kond === 'Mati' ? 'Mati' : 'Hidup' }, { merge: true });
                 closeModals();
             };
 
-            const toggleSelect = (id) => {
-                setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-            };
-
-            const toggleSelectAll = () => {
-                setSelectedIds(selectedIds.length === plants.length ? [] : plants.map(p => p.id));
-            };
-
-            const triggerBulkDelete = () => {
-                if (selectedIds.length === 0) return;
-                const title = selectedIds.length === 1 
-                    ? plants.find(p => p.id === selectedIds[0])?.nama 
-                    : `${selectedIds.length} Item Terpilih`;
-                setDeleteConfirm({ show: true, ids: selectedIds, type: 'plant', title });
-            };
-
             const executeDelete = async () => {
-                if (!user) return;
-                const batch = db.batch();
-                
-                if (deleteConfirm.type === 'plant') {
+                if (db && user) {
+                    const batch = db.batch();
                     const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
                     const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
                     
-                    for (const id of deleteConfirm.ids) {
-                        batch.delete(plantsRef.doc(id));
-                        // Clean up logs for these plants
-                        const plantLogs = logs.filter(l => l.plantId === id);
-                        plantLogs.forEach(l => batch.delete(logsRef.doc(l.id)));
+                    if (deleteConfirm.type === 'plant') {
+                        deleteConfirm.ids.forEach(id => {
+                            batch.delete(plantsRef.doc(id));
+                            logs.filter(l => l.plantId === id).forEach(l => batch.delete(logsRef.doc(l.id)));
+                        });
+                    } else {
+                        deleteConfirm.ids.forEach(id => batch.delete(logsRef.doc(id)));
                     }
+                    await batch.commit();
                 } else {
-                    const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
-                    for (const id of deleteConfirm.ids) {
-                        batch.delete(logsRef.doc(id));
+                    // Offline fallback
+                    if (deleteConfirm.type === 'plant') {
+                        const newPlants = plants.filter(p => !deleteConfirm.ids.includes(p.id));
+                        setPlants(newPlants);
+                        localStorage.setItem('plants', JSON.stringify(newPlants));
+                    } else {
+                        const newLogs = logs.filter(l => !deleteConfirm.ids.includes(l.id));
+                        setLogs(newLogs);
+                        localStorage.setItem('logs', JSON.stringify(newLogs));
                     }
                 }
-
-                await batch.commit();
                 setSelectedIds([]);
                 setIsSelectMode(false);
                 setDeleteConfirm({ show: false, ids: [], type: null, title: '' });
             };
 
+            const toggleSelect = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+            const toggleSelectAll = () => setSelectedIds(selectedIds.length === plants.length ? [] : plants.map(p => p.id));
             const closeModals = () => { setShowModal(false); setEditingItem(null); setTempImage(''); };
 
-            if (isLoading && !user) {
+            if (isLoading) {
                 return (
                     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
                         <Icon name="flower" size={48} className="text-pink-400 animate-bounce mb-4" />
-                        <div className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Memuat Kebun Anda...</div>
+                        <div className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Memuat Kebun...</div>
                     </div>
                 );
             }
@@ -320,14 +345,8 @@
                             
                             <div className="flex items-center gap-2">
                                 {activeTab === 'master' && (
-                                    <button 
-                                        onClick={() => { setIsSelectMode(!isSelectMode); setSelectedIds([]); }}
-                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isSelectMode ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}
-                                    >
-                                        <Icon name={isSelectMode ? "check-circle" : "check"} size={20} />
-                                    </button>
+                                    <button onClick={() => { setIsSelectMode(!isSelectMode); setSelectedIds([]); }} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isSelectMode ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Icon name={isSelectMode ? "check-circle" : "check"} size={20} /></button>
                                 )}
-                                
                                 <div className="flex gap-2 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100 shadow-inner">
                                     <div className="pr-2 border-r border-slate-200 text-center">
                                         <div className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Hidup</div>
@@ -342,82 +361,37 @@
                         </div>
 
                         <nav className="flex gap-8">
-                            <button onClick={() => { setActiveTab('master'); setIsSelectMode(false); }} className={`pb-2 text-xs font-bold uppercase tracking-wider relative transition-all ${activeTab === 'master' ? 'text-emerald-700' : 'text-slate-300'}`}>
-                                Daftar Tanaman
-                                {activeTab === 'master' && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full" />}
-                            </button>
-                            <button onClick={() => { setActiveTab('logs'); setIsSelectMode(false); }} className={`pb-2 text-xs font-bold uppercase tracking-wider relative transition-all ${activeTab === 'logs' ? 'text-emerald-700' : 'text-slate-300'}`}>
-                                Log Harian
-                                {activeTab === 'logs' && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full" />}
-                            </button>
+                            <button onClick={() => { setActiveTab('master'); setIsSelectMode(false); }} className={`pb-2 text-xs font-bold uppercase tracking-wider relative transition-all ${activeTab === 'master' ? 'text-emerald-700' : 'text-slate-300'}`}>Daftar Tanaman{activeTab === 'master' && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full" />}</button>
+                            <button onClick={() => { setActiveTab('logs'); setIsSelectMode(false); }} className={`pb-2 text-xs font-bold uppercase tracking-wider relative transition-all ${activeTab === 'logs' ? 'text-emerald-700' : 'text-slate-300'}`}>Log Harian{activeTab === 'logs' && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full" />}</button>
                         </nav>
                     </header>
 
-                    {/* Konten Utama */}
+                    {/* Daftar Tanaman */}
                     <div className="p-4 flex-1">
                         {activeTab === 'master' ? (
                             <div className="space-y-4 fade-in">
                                 {isSelectMode && (
                                     <div className="flex justify-between items-center px-2 mb-2">
-                                        <button onClick={toggleSelectAll} className="text-xs font-bold text-emerald-700 uppercase">
-                                            {selectedIds.length === plants.length ? "Batal Pilih Semua" : "Pilih Semua"}
-                                        </button>
+                                        <button onClick={toggleSelectAll} className="text-xs font-bold text-emerald-700 uppercase">{selectedIds.length === plants.length ? "Batal Pilih" : "Pilih Semua"}</button>
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{selectedIds.length} Terpilih</span>
                                     </div>
                                 )}
-                                {plants.length === 0 ? (
-                                    <div className="text-center py-20 text-slate-300 italic">Belum ada tanaman terdaftar.</div>
-                                ) : plants.map(p => (
-                                    <div 
-                                        key={p.id} 
-                                        onClick={() => isSelectMode && toggleSelect(p.id)}
-                                        className={`bg-white p-4 rounded-3xl shadow-md border transition-all relative ${p.status === 'Mati' ? 'opacity-60 grayscale bg-slate-50' : ''} ${isSelectMode && selectedIds.includes(p.id) ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-100'}`}
-                                    >
+                                {plants.map(p => (
+                                    <div key={p.id} onClick={() => isSelectMode && toggleSelect(p.id)} className={`bg-white p-4 rounded-3xl shadow-md border transition-all relative ${p.status === 'Mati' ? 'opacity-60 grayscale bg-slate-50' : ''} ${isSelectMode && selectedIds.includes(p.id) ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-100'}`}>
                                         {isSelectMode && (
-                                            <div className="absolute top-4 left-4 z-10">
-                                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 ${selectedIds.includes(p.id) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200'}`}>
-                                                    {selectedIds.includes(p.id) && <Icon name="check" size={14} />}
-                                                </div>
-                                            </div>
+                                            <div className="absolute top-4 left-4 z-10"><div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 ${selectedIds.includes(p.id) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200'}`}>{selectedIds.includes(p.id) && <Icon name="check" size={14} />}</div></div>
                                         )}
-
                                         <div className={`flex items-center gap-3 mb-3 pb-2 border-b border-slate-50 ${isSelectMode ? 'ml-8' : ''}`}>
-                                            <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden border shadow-inner flex-shrink-0 flex items-center justify-center">
-                                                {p.foto ? <img src={p.foto} className="w-full h-full object-cover" /> : <Icon name="image" size={18} className="text-slate-300" />}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-xs font-bold text-emerald-800 truncate uppercase tracking-tight">{p.id}</div>
-                                                <div className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Mulai: {p.tanggal}</div>
-                                            </div>
-                                            <span className={`text-[10px] font-bold px-3 py-1 rounded-lg uppercase border ${p.status === 'Mati' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                                                {p.status}
-                                            </span>
+                                            <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden border shadow-inner flex-shrink-0 flex items-center justify-center">{p.foto ? <img src={p.foto} className="w-full h-full object-cover" /> : <Icon name="image" size={18} className="text-slate-300" />}</div>
+                                            <div className="flex-1 min-w-0"><div className="text-xs font-bold text-emerald-800 truncate uppercase tracking-tight">{p.id}</div><div className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Mulai: {p.tanggal}</div></div>
+                                            <span className={`text-[10px] font-bold px-3 py-1 rounded-lg uppercase border ${p.status === 'Mati' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{p.status}</span>
                                         </div>
-
                                         <div className={`flex justify-between items-end text-xs font-bold text-slate-600 ${isSelectMode ? 'ml-8' : ''}`}>
-                                            <div className="space-y-0.5">
-                                                <div className="text-[15px] font-black text-slate-800 leading-tight truncate max-w-[150px]">{p.nama}</div>
-                                                <div className="flex gap-2 items-center text-[10px] text-slate-400 font-medium">
-                                                    <span className="flex items-center gap-1"><Icon name="leaf" size={10} className="text-emerald-400"/> {p.varietas}</span>
-                                                    <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
-                                                    <span>{calculateAge(p.tanggal)} HARI</span>
-                                                </div>
-                                            </div>
-                                            
+                                            <div className="space-y-0.5"><div className="text-[15px] font-black text-slate-800 leading-tight truncate max-w-[150px]">{p.nama}</div><div className="flex gap-2 items-center text-[10px] text-slate-400 font-medium"><span className="flex items-center gap-1"><Icon name="leaf" size={10} className="text-emerald-400"/> {p.varietas}</span><span className="w-1 h-1 bg-slate-200 rounded-full"></span><span>{calculateAge(p.tanggal)} HARI</span></div></div>
                                             {!isSelectMode && (
                                                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); setModalType('plant'); setEditingItem(p); setTempImage(p.foto); setShowModal(true); }} 
-                                                        className="w-10 h-10 flex items-center justify-center bg-blue-100 text-blue-700 rounded-xl active:scale-90 transition-all border border-blue-200"
-                                                    >
-                                                        <Icon name="edit-2" size={18} />
-                                                    </button>
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ show: true, ids: [p.id], type: 'plant', title: p.nama }); }} 
-                                                        className="w-10 h-10 flex items-center justify-center bg-red-100 text-red-700 rounded-xl active:scale-90 transition-all border border-red-200"
-                                                    >
-                                                        <Icon name="trash-2" size={18} />
-                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setModalType('plant'); setEditingItem(p); setTempImage(p.foto); setShowModal(true); }} className="w-10 h-10 flex items-center justify-center bg-blue-100 text-blue-700 rounded-xl border border-blue-200"><Icon name="edit-2" size={18} /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ show: true, ids: [p.id], type: 'plant', title: p.nama }); }} className="w-10 h-10 flex items-center justify-center bg-red-100 text-red-700 rounded-xl border border-red-200"><Icon name="trash-2" size={18} /></button>
                                                 </div>
                                             )}
                                         </div>
@@ -426,30 +400,20 @@
                             </div>
                         ) : (
                             <div className="space-y-4 fade-in">
-                                {logs.length === 0 ? (
-                                    <div className="text-center py-20 text-slate-300 italic">Belum ada catatan log harian.</div>
-                                ) : logs.map(l => (
+                                {logs.map(l => (
                                     <div key={l.id} className="bg-white p-4 rounded-3xl shadow-md border border-slate-100">
                                         <div className="flex items-center gap-3 mb-3 pb-2 border-b border-slate-50">
-                                            <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden border shadow-inner flex-shrink-0 flex items-center justify-center">
-                                                {l.foto ? <img src={l.foto} className="w-full h-full object-cover" /> : <Icon name="camera" size={18} className="text-slate-300" />}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-xs font-bold text-emerald-800 truncate uppercase tracking-tight">{l.plantId}</div>
-                                                <div className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Cek: {l.tanggal}</div>
-                                            </div>
+                                            <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden border shadow-inner flex items-center justify-center">{l.foto ? <img src={l.foto} className="w-full h-full object-cover" /> : <Icon name="camera" size={18} className="text-slate-300" />}</div>
+                                            <div className="flex-1 min-w-0"><div className="text-xs font-bold text-emerald-800 truncate uppercase tracking-tight">{l.plantId}</div><div className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Cek: {l.tanggal}</div></div>
                                             <span className="text-[10px] font-bold px-3 py-1 rounded-lg bg-emerald-50 text-emerald-600 uppercase border border-emerald-100">{l.fase}</span>
                                         </div>
                                         <div className="flex justify-between items-center text-xs font-bold text-slate-600">
-                                            <div className="flex gap-4">
-                                                <span className="flex items-center gap-1"><Icon name="trending-up" size={12} className="text-emerald-400"/> {l.tinggi} cm</span>
-                                                <span className="flex items-center gap-1"><Icon name="leaf" size={12} className="text-emerald-400"/> {l.daun} Daun</span>
-                                            </div>
+                                            <div className="flex gap-4"><span className="flex items-center gap-1"><Icon name="trending-up" size={12} className="text-emerald-400"/> {l.tinggi} cm</span><span className="flex items-center gap-1"><Icon name="leaf" size={12} className="text-emerald-400"/> {l.daun} Daun</span></div>
                                             <div className="flex items-center gap-2">
                                                 <span className={`${l.kondisi === 'Mati' ? 'text-rose-600 bg-rose-50' : 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-md`}>{l.kondisi}</span>
                                                 <div className="flex gap-1 border-l pl-2 border-slate-100">
-                                                    <button onClick={() => { setModalType('log'); setEditingItem(l); setTempImage(l.foto); setShowModal(true); }} className="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl active:scale-90 border border-blue-100"><Icon name="edit-3" size={16}/></button>
-                                                    <button onClick={() => setDeleteConfirm({ show: true, ids: [l.id], type: 'log', title: `Log ${l.plantId}` })} className="w-9 h-9 flex items-center justify-center bg-red-50 text-red-600 rounded-xl active:scale-90 border border-red-100"><Icon name="trash-2" size={16}/></button>
+                                                    <button onClick={() => { setModalType('log'); setEditingItem(l); setTempImage(l.foto); setShowModal(true); }} className="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl border border-blue-100"><Icon name="edit-3" size={16}/></button>
+                                                    <button onClick={() => setDeleteConfirm({ show: true, ids: [l.id], type: 'log', title: `Log ${l.plantId}` })} className="w-9 h-9 flex items-center justify-center bg-red-50 text-red-600 rounded-xl border border-red-100"><Icon name="trash-2" size={16}/></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -459,115 +423,69 @@
                         )}
                     </div>
 
+                    {/* Bar Aksi Massal */}
                     {isSelectMode && (
                         <div className="fixed bottom-0 left-0 right-0 p-4 pb-8 bg-white border-t border-slate-100 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-40 selection-bar">
                             <div className="max-w-md mx-auto flex gap-3">
                                 <button onClick={() => { setIsSelectMode(false); setSelectedIds([]); }} className="flex-1 bg-slate-100 text-slate-500 p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px]">Batal</button>
-                                <button onClick={triggerBulkDelete} disabled={selectedIds.length === 0} className={`flex-[2] p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg transition-all ${selectedIds.length > 0 ? 'bg-rose-600 text-white shadow-rose-200 active:scale-95' : 'bg-slate-200 text-slate-400'}`}>Hapus {selectedIds.length} Item</button>
+                                <button onClick={() => setDeleteConfirm({ show: true, ids: selectedIds, type: 'plant', title: `${selectedIds.length} Tanaman` })} disabled={selectedIds.length === 0} className={`flex-[2] p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg transition-all ${selectedIds.length > 0 ? 'bg-rose-600 text-white shadow-rose-200 active:scale-95' : 'bg-slate-200 text-slate-400'}`}>Hapus {selectedIds.length} Item</button>
                             </div>
                         </div>
                     )}
 
                     {!isSelectMode && (
-                        <button onClick={() => { setModalType(activeTab === 'master' ? 'plant' : 'log'); setEditingItem(null); setTempImage(''); setShowModal(true); }} className="fixed bottom-8 right-8 w-16 h-16 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-30 border-4 border-white">
-                            <Icon name="plus" size={32} />
-                        </button>
+                        <button onClick={() => { setModalType(activeTab === 'master' ? 'plant' : 'log'); setEditingItem(null); setTempImage(''); setShowModal(true); }} className="fixed bottom-8 right-8 w-16 h-16 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-30 border-4 border-white"><Icon name="plus" size={32} /></button>
                     )}
 
+                    {/* Modal Konfirmasi */}
                     {deleteConfirm.show && (
                         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6 text-center">
                             <div className="bg-white w-full max-w-xs rounded-[2rem] p-8 shadow-2xl modal-up">
                                 <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="alert" size={32} /></div>
                                 <h3 className="text-lg font-black text-slate-800 mb-2 uppercase tracking-tighter">Hapus Data?</h3>
-                                <p className="text-slate-500 text-[10px] mb-6 leading-relaxed px-2 font-medium">Apakah kamu yakin ingin menghapus <span className="font-bold text-rose-600">"{deleteConfirm.title}"</span>?</p>
+                                <p className="text-slate-500 text-[10px] mb-6 px-2 font-medium">Yakin ingin menghapus <span className="font-bold text-rose-600">"{deleteConfirm.title}"</span>?</p>
                                 <div className="flex flex-col gap-2">
-                                    <button onClick={executeDelete} className="w-full bg-rose-600 text-white p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-rose-200 active:scale-95 transition-all">Ya, Hapus Sekarang</button>
-                                    <button onClick={() => setDeleteConfirm({ show: false, ids: [], type: null, title: '' })} className="w-full bg-slate-100 text-slate-500 p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] active:scale-95 transition-all">Batal</button>
+                                    <button onClick={executeDelete} className="w-full bg-rose-600 text-white p-4 rounded-2xl font-bold uppercase text-[10px] shadow-lg active:scale-95">Ya, Hapus</button>
+                                    <button onClick={() => setDeleteConfirm({ show: false, ids: [], type: null, title: '' })} className="w-full bg-slate-100 text-slate-500 p-4 rounded-2xl font-bold uppercase text-[10px] active:scale-95">Batal</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
+                    {/* Modal Input */}
                     {showModal && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-[4px] z-50 flex items-center justify-center p-6">
                             <div className="bg-white w-full rounded-[2.5rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto fade-in">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="font-bold text-slate-800 uppercase tracking-tighter text-base">{editingItem ? 'Edit' : 'Tambah'} {modalType === 'plant' ? 'Tanaman' : 'Log'}</h3>
-                                    <button onClick={closeModals} className="w-10 h-10 flex items-center justify-center bg-slate-100 text-slate-400 rounded-full"><Icon name="x" size={20} /></button>
-                                </div>
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 uppercase tracking-tighter text-base">{editingItem ? 'Edit' : 'Tambah'} {modalType === 'plant' ? 'Tanaman' : 'Log'}</h3><button onClick={closeModals} className="w-10 h-10 flex items-center justify-center bg-slate-100 text-slate-400 rounded-full"><Icon name="x" size={20} /></button></div>
                                 <form onSubmit={modalType === 'plant' ? handleSavePlant : handleSaveLog} className="space-y-5">
-                                    <div className="flex flex-col items-center p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 active:bg-slate-100 transition-colors cursor-pointer shadow-inner" onClick={() => fileInputRef.current.click()}>
-                                        <div className="w-24 h-24 rounded-2xl bg-white border-4 border-white shadow-lg overflow-hidden flex items-center justify-center mb-3">
-                                            {tempImage ? <img src={tempImage} className="w-full h-full object-cover" /> : <Icon name="camera" size={40} className="text-slate-200" />}
-                                        </div>
-                                        <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest text-center">Ambil Foto HP</div>
-                                    </div>
+                                    <div className="flex flex-col items-center p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 active:bg-slate-100 transition-colors cursor-pointer" onClick={() => fileInputRef.current.click()}><div className="w-24 h-24 rounded-2xl bg-white border-4 shadow-lg overflow-hidden flex items-center justify-center mb-3">{tempImage ? <img src={tempImage} className="w-full h-full object-cover" /> : <Icon name="camera" size={40} className="text-slate-200" />}</div><div className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Ambil Foto HP</div></div>
                                     {modalType === 'plant' ? (
                                         <div className="space-y-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nama Tanaman</label>
-                                                <input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:bg-white focus:border-emerald-300 font-semibold transition-all" />
+                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nama</label><input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border outline-none focus:border-emerald-300 font-semibold transition-all" /></div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Varietas</label><input name="varietas" defaultValue={editingItem?.varietas} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none" /></div>
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Status</label><select name="status" defaultValue={editingItem?.status || 'Hidup'} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none font-bold"><option>Hidup</option><option>Mati</option></select></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Varietas</label>
-                                                    <input name="varietas" defaultValue={editingItem?.varietas} placeholder="Varietas" className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:bg-white" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Status</label>
-                                                    <select name="status" defaultValue={editingItem?.status || 'Hidup'} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold outline-none"><option>Hidup</option><option>Mati</option></select>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Media</label>
-                                                    <select name="media" defaultValue={editingItem?.media || 'Tanah'} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none"><option>Tanah</option><option>Hidroponik</option></select>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tgl Tanam</label>
-                                                    <input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none" />
-                                                </div>
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Media</label><select name="media" defaultValue={editingItem?.media || 'Tanah'} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none"><option>Tanah</option><option>Hidroponik</option></select></div>
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tgl Tanam</label><input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none" /></div>
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="space-y-4 text-sm">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Pilih Tanaman</label>
-                                                <select name="plantId" defaultValue={editingItem?.plantId} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold outline-none">
-                                                    {plants.map(p => <option key={p.id} value={p.id}>{p.id} - {p.nama}</option>)}
-                                                </select>
+                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tanaman</label><select name="plantId" defaultValue={editingItem?.plantId} className="w-full p-4 bg-slate-50 rounded-2xl border font-bold outline-none">{plants.map(p => <option key={p.id} value={p.id}>{p.id} - {p.nama}</option>)}</select></div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tinggi (cm)</label><input type="number" step="0.1" name="tinggi" defaultValue={editingItem?.tinggi} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none" /></div>
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Daun</label><input type="number" name="daun" defaultValue={editingItem?.daun} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none" /></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tinggi (cm)</label>
-                                                    <input type="number" step="0.1" name="tinggi" defaultValue={editingItem?.tinggi} placeholder="0.0" className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Daun</label>
-                                                    <input type="number" name="daun" defaultValue={editingItem?.daun} placeholder="0" className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none" />
-                                                </div>
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-emerald-600 uppercase ml-1">Fase</label><select name="fase" defaultValue={editingItem?.fase || 'Semai'} className="w-full p-4 bg-emerald-50 text-emerald-700 rounded-2xl font-bold border outline-none"><option>Semai</option><option>Vegetatif</option><option>Berbunga</option><option>Berbuah</option><option>Panen</option></select></div>
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-rose-600 uppercase ml-1">Kondisi</label><select name="kondisi" defaultValue={editingItem?.kondisi || 'Sehat'} className="w-full p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold border outline-none"><option value="Sehat">Sehat</option><option value="Kuning">Kuning</option><option value="Layu">Layu</option><option value="Mati">MATI</option></select></div>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-emerald-600 uppercase ml-1">Fase</label>
-                                                    <select name="fase" defaultValue={editingItem?.fase || 'Semai'} className="w-full p-4 bg-emerald-50 text-emerald-700 rounded-2xl font-bold border border-emerald-100 outline-none">
-                                                        <option>Semai</option><option>Vegetatif</option><option>Berbunga</option><option>Berbuah</option><option>Panen</option>
-                                                    </select>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-rose-600 uppercase ml-1">Kondisi</label>
-                                                    <select name="kondisi" defaultValue={editingItem?.kondisi || 'Sehat'} className="w-full p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold border border-rose-100 outline-none">
-                                                        <option value="Sehat">Sehat</option><option value="Kuning">Kuning</option><option value="Layu">Layu</option><option value="Mati">MATI</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tanggal Cek</label>
-                                                <input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none" />
-                                            </div>
+                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tanggal Cek</label><input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none" /></div>
                                         </div>
                                     )}
-                                    <button type="submit" className="w-full bg-emerald-600 text-white p-5 rounded-[1.5rem] font-bold uppercase tracking-[0.2em] text-[11px] shadow-xl shadow-emerald-200 active:scale-95 transition-all">Simpan Data</button>
+                                    <button type="submit" className="w-full bg-emerald-600 text-white p-5 rounded-[1.5rem] font-bold uppercase tracking-[0.2em] text-[11px] shadow-xl active:scale-95 transition-all">Simpan Data</button>
                                 </form>
                             </div>
                         </div>
