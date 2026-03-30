@@ -36,7 +36,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, Fragment } = React;
 
-        // DATA AWAL (Default)
+        // DATA AWAL (Default) - 18 Tanaman Kesepakatan
         const INITIAL_PLANTS = [
             { id: 'STE-001', nama: 'Snapdragon Tetra', varietas: 'Floral', media: 'Tanah', tanggal: '2026-03-28', status: 'Hidup', foto: '' },
             { id: 'DPE-001', nama: 'Dwarf Petunia', varietas: 'Miniature', media: 'Tanah', tanggal: '2026-03-28', status: 'Hidup', foto: '' },
@@ -62,11 +62,7 @@
             { id: 'log-1', plantId: 'STE-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
             { id: 'log-2', plantId: 'DPE-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
             { id: 'log-3', plantId: 'ACR-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
-            { id: 'log-4', plantId: 'KAN-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
-            { id: 'log-5', plantId: 'THI-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
-            { id: 'log-6', plantId: 'TUN-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
-            { id: 'log-7', plantId: 'CAB-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
-            { id: 'log-8', plantId: 'STR-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' }
+            { id: 'log-4', plantId: 'KAN-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' }
         ];
 
         // Konfigurasi Cloud
@@ -151,23 +147,18 @@
                 let prefix = "";
                 
                 if (words.length >= 3) {
-                    // Snapdragon Tetra Floral -> STF
                     prefix = (words[0][0] + words[1][0] + words[2][0]);
                 } else if (words.length === 2) {
-                    // Snapdragon Tetra -> STE
                     prefix = (words[0][0] + words[1].substring(0, 2));
                 } else if (words.length === 1) {
-                    // Kangkung -> KAN
                     prefix = words[0].substring(0, 3);
+                } else {
+                    prefix = "PLT";
                 }
                 
                 prefix = prefix.toUpperCase().padEnd(3, 'X');
-                
-                // Cari angka urutan (e.g., 001, 002)
-                const existingSamePrefix = plants.filter(p => p.id.startsWith(prefix));
-                const nextNum = existingSamePrefix.length + 1;
-                
-                return `${prefix}-${nextNum.toString().padStart(3, '0')}`;
+                const count = plants.filter(p => p.id.startsWith(prefix)).length;
+                return `${prefix}-${(count + 1).toString().padStart(3, '0')}`;
             };
 
             useEffect(() => {
@@ -187,32 +178,39 @@
             }, []);
 
             useEffect(() => {
-                if (!db || !user) {
+                // Prioritas: Cloud Sync
+                if (db && user) {
+                    const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
+                    const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
+
+                    const unsubPlants = plantsRef.onSnapshot((snap) => {
+                        if (snap.size > 0) setPlants(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                        setIsLoading(false);
+                    });
+
+                    const unsubLogs = logsRef.onSnapshot((snap) => {
+                        if (snap.size > 0) {
+                            const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            data.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+                            setLogs(data);
+                        }
+                    });
+                    return () => { unsubPlants(); unsubLogs(); };
+                } else {
+                    // Fallback: Local Storage (PENTING UNTUK HP/VERCEL)
                     const localPlants = JSON.parse(localStorage.getItem('plants'));
                     const localLogs = JSON.parse(localStorage.getItem('logs'));
-                    if (localPlants) setPlants(localPlants);
+                    
+                    if (localPlants && localPlants.length > 0) {
+                        setPlants(localPlants);
+                    } else {
+                        // Jika storage kosong, simpan 18 tanaman awal ke storage
+                        localStorage.setItem('plants', JSON.stringify(INITIAL_PLANTS));
+                    }
+                    
                     if (localLogs) setLogs(localLogs);
                     setIsLoading(false);
-                    return;
                 }
-
-                const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
-                const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
-
-                const unsubPlants = plantsRef.onSnapshot((snap) => {
-                    if (snap.size > 0) setPlants(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                    setIsLoading(false);
-                });
-
-                const unsubLogs = logsRef.onSnapshot((snap) => {
-                    if (snap.size > 0) {
-                        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        data.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
-                        setLogs(data);
-                    }
-                });
-
-                return () => { unsubPlants(); unsubLogs(); };
             }, [user]);
 
             const calculateAge = (dateString) => {
@@ -299,6 +297,10 @@
                     }
                     setLogs(newLogs);
                     localStorage.setItem('logs', JSON.stringify(newLogs));
+                    // Update local plant status
+                    const newPlants = plants.map(p => p.id === pId ? { ...p, status: kond === 'Mati' ? 'Mati' : 'Hidup' } : p);
+                    setPlants(newPlants);
+                    localStorage.setItem('plants', JSON.stringify(newPlants));
                 }
                 closeModals();
             };
@@ -329,6 +331,13 @@
                 setSelectedIds([]);
                 setIsSelectMode(false);
                 setDeleteConfirm({ show: false, ids: [], type: null, title: '' });
+            };
+
+            const resetToDefault = () => {
+                setPlants(INITIAL_PLANTS);
+                setLogs(INITIAL_LOGS);
+                localStorage.setItem('plants', JSON.stringify(INITIAL_PLANTS));
+                localStorage.setItem('logs', JSON.stringify(INITIAL_LOGS));
             };
 
             const toggleSelect = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -392,7 +401,7 @@
                                         )}
                                         <div className={`flex items-center gap-3 mb-3 pb-2 border-b border-slate-50 ${isSelectMode ? 'ml-8' : ''}`}>
                                             <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden border shadow-inner flex-shrink-0 flex items-center justify-center">{p.foto ? <img src={p.foto} className="w-full h-full object-cover" /> : <Icon name="image" size={18} className="text-slate-300" />}</div>
-                                            <div className="flex-1 min-w-0"><div className="text-xs font-bold text-emerald-800 truncate uppercase">{p.id}</div><div className="text-[9px] text-slate-400 font-bold uppercase">Mulai: {p.tanggal}</div></div>
+                                            <div className="flex-1 min-w-0"><div className="text-xs font-bold text-emerald-800 truncate uppercase tracking-tight">{p.id}</div><div className="text-[9px] text-slate-400 font-bold uppercase">Mulai: {p.tanggal}</div></div>
                                             <span className={`text-[10px] font-bold px-3 py-1 rounded-lg uppercase border ${p.status === 'Mati' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{p.status}</span>
                                         </div>
                                         <div className={`flex justify-between items-end text-xs font-bold text-slate-600 ${isSelectMode ? 'ml-8' : ''}`}>
@@ -406,6 +415,12 @@
                                         </div>
                                     </div>
                                 ))}
+
+                                {plants.length < 5 && (
+                                    <div className="py-10 text-center">
+                                        <button onClick={resetToDefault} className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest border border-emerald-100 px-4 py-2 rounded-xl bg-emerald-50">Pulihkan 18 Tanaman Awal</button>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="space-y-4 fade-in">
@@ -467,7 +482,7 @@
                                     <div className="flex flex-col items-center p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 cursor-pointer" onClick={() => fileInputRef.current.click()}><div className="w-24 h-24 rounded-2xl bg-white border-4 shadow-lg overflow-hidden flex items-center justify-center mb-3">{tempImage ? <img src={tempImage} className="w-full h-full object-cover" /> : <Icon name="camera" size={40} className="text-slate-200" />}</div><div className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Ambil Foto HP</div></div>
                                     {modalType === 'plant' ? (
                                         <div className="space-y-4">
-                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nama</label><input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border outline-none font-semibold" /></div>
+                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nama Tanaman</label><input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border outline-none font-semibold transition-all" /></div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Varietas</label><input name="varietas" defaultValue={editingItem?.varietas} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none" /></div>
                                                 <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Status</label><select name="status" defaultValue={editingItem?.status || 'Hidup'} className="w-full p-4 bg-slate-50 rounded-2xl border font-bold"><option>Hidup</option><option>Mati</option></select></div>
@@ -491,7 +506,7 @@
                                             <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tanggal Cek</label><input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border" /></div>
                                         </div>
                                     )}
-                                    <button type="submit" className="w-full bg-emerald-600 text-white p-5 rounded-[1.5rem] font-bold uppercase text-[11px] shadow-xl active:scale-95">Simpan Data</button>
+                                    <button type="submit" className="w-full bg-emerald-600 text-white p-5 rounded-[1.5rem] font-bold uppercase text-[11px] shadow-xl active:scale-95 transition-all">Simpan Data</button>
                                 </form>
                             </div>
                         </div>
