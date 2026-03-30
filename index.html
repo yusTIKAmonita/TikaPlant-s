@@ -10,7 +10,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
         body { 
             font-family: 'Inter', sans-serif; 
             -webkit-tap-highlight-color: transparent; 
@@ -19,55 +19,68 @@
         .fade-in { animation: fadeIn 0.2s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         #root { overflow-x: hidden; }
+        .modal-up { animation: modalUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes modalUp { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .selection-bar { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
     </style>
 </head>
 <body class="text-slate-700 text-sm">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef } = React;
+        const { useState, useRef, Fragment } = React;
 
-        // Komponen Ikon Menggunakan SVG Langsung (Pasti Muncul di HP)
+        // Komponen Ikon SVG (Pasti muncul di HP)
         const Icon = ({ name, size = 18, className = "" }) => {
             const icons = {
+                flower: (
+                    <Fragment>
+                        <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+                        <path d="M12 7.5c1.5-4.5 7.5-4.5 7.5 0s-6 7.5-7.5 7.5-7.5-3-7.5-7.5 6-4.5 7.5 0z" opacity="0.4" fill="currentColor" />
+                        <path d="M16.5 12c4.5 1.5 4.5 7.5 0 7.5s-7.5-6-7.5-7.5 3-7.5 7.5-7.5 4.5 6 0 7.5z" opacity="0.4" fill="currentColor" />
+                        <path d="M12 16.5c-1.5 4.5-7.5 4.5-7.5 0s6-7.5 7.5-7.5 7.5 3 7.5 7.5-6 4.5-7.5 0z" opacity="0.4" fill="currentColor" />
+                        <path d="M7.5 12c-4.5-1.5-4.5-7.5 0-7.5s7.5 6 7.5 7.5-3 7.5-7.5 7.5-4.5-6 0-7.5z" opacity="0.4" fill="currentColor" />
+                        <path d="M12 8c2-4 9-4 9 2s-5 6-9 6" />
+                        <path d="M16 12c4 2 4 9-2 9s-6-5-6-9" />
+                        <path d="M12 16c-2 4-9 4-9-2s5-6 9-6" />
+                        <path d="M8 12c-4-2-4-9 2-9s6 5 6 9" />
+                    </Fragment>
+                ),
                 leaf: <path d="M11 20a7 7 0 0 1-7-7c0-2.3 1.3-4.5 3.3-5.3A7 7 0 0 1 18 13a7 7 0 0 1-7 7z M2 21l9-9 M7 13h5 M11 12h5" />,
                 plus: <path d="M12 5v14M5 12h14" />,
+                check: <polyline points="20 6 9 17 4 12" />,
+                "check-circle": <React.Fragment><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></React.Fragment>,
+                circle: <circle cx="12" cy="12" r="10" />,
                 "edit-2": <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />,
                 "edit-3": <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />,
                 "trash-2": <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />,
                 image: (
-                    <React.Fragment>
+                    <Fragment>
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                         <circle cx="8.5" cy="8.5" r="1.5" />
                         <polyline points="21 15 16 10 5 21" />
-                    </React.Fragment>
+                    </Fragment>
                 ),
                 camera: (
-                    <React.Fragment>
+                    <Fragment>
                         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                         <circle cx="12" cy="13" r="4" />
-                    </React.Fragment>
+                    </Fragment>
+                ),
+                alert: (
+                    <Fragment>
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </Fragment>
                 ),
                 x: <path d="M18 6L6 18M6 6l12 12" />,
                 "trending-up": (
-                    <React.Fragment>
+                    <Fragment>
                         <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
                         <polyline points="17 6 23 6 23 12" />
-                    </React.Fragment>
-                ),
-                calendar: (
-                    <React.Fragment>
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                        <line x1="16" y1="2" x2="16" y2="6" />
-                        <line x1="8" y1="2" x2="8" y2="6" />
-                        <line x1="3" y1="10" x2="21" y2="10" />
-                    </React.Fragment>
-                ),
-                mapPin: (
-                    <React.Fragment>
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                        <circle cx="12" cy="10" r="3" />
-                    </React.Fragment>
+                    </Fragment>
                 )
             };
 
@@ -89,7 +102,7 @@
         };
 
         const App = () => {
-            // DATA MASTER: 18 TANAMAN
+            // Data Master
             const [plants, setPlants] = useState([
                 { id: 'STE-001', nama: 'Snapdragon Tetra', varietas: 'Floral', media: 'Tanah', tanggal: '2026-03-28', status: 'Hidup', foto: '' },
                 { id: 'DPE-001', nama: 'Dwarf Petunia', varietas: 'Miniature', media: 'Tanah', tanggal: '2026-03-28', status: 'Hidup', foto: '' },
@@ -111,7 +124,7 @@
                 { id: 'SER-001', nama: 'Sereh', varietas: 'Dapur', media: 'Tanah', tanggal: '2026-03-28', status: 'Hidup', foto: '' }
             ]);
 
-            // DATA LOG: 8 LOG AWAL
+            // Data Log
             const [logs, setLogs] = useState([
                 { id: 201, plantId: 'STE-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
                 { id: 202, plantId: 'DPE-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
@@ -129,6 +142,13 @@
             const [editingItem, setEditingItem] = useState(null);
             const [tempImage, setTempImage] = useState('');
             const fileInputRef = useRef(null);
+
+            // Fitur Selection Mode
+            const [isSelectMode, setIsSelectMode] = useState(false);
+            const [selectedIds, setSelectedIds] = useState([]);
+
+            // State untuk Modal Hapus Kustom
+            const [deleteConfirm, setDeleteConfirm] = useState({ show: false, ids: [], type: null, title: '' });
 
             const calculateAge = (dateString) => {
                 const start = new Date(dateString);
@@ -186,17 +206,43 @@
                 closeModals();
             };
 
-            const handleDeletePlant = (id) => {
-                if(window.confirm("Hapus tanaman ini dan riwayatnya?")) {
-                    setPlants(plants.filter(p => p.id !== id));
-                    setLogs(logs.filter(l => l.plantId !== id));
+            // Fungsi Toggle Pilih
+            const toggleSelect = (id) => {
+                if (selectedIds.includes(id)) {
+                    setSelectedIds(selectedIds.filter(item => item !== id));
+                } else {
+                    setSelectedIds([...selectedIds, id]);
                 }
             };
 
-            const handleDeleteLog = (id) => {
-                if(window.confirm("Hapus log harian ini?")) {
-                    setLogs(logs.filter(l => l.id !== id));
+            const toggleSelectAll = () => {
+                if (selectedIds.length === plants.length) {
+                    setSelectedIds([]);
+                } else {
+                    setSelectedIds(plants.map(p => p.id));
                 }
+            };
+
+            // Fungsi Pemicu Modal Hapus Massal
+            const triggerBulkDelete = () => {
+                if (selectedIds.length === 0) return;
+                const title = selectedIds.length === 1 
+                    ? plants.find(p => p.id === selectedIds[0]).nama 
+                    : `${selectedIds.length} Tanaman Terpilih`;
+                setDeleteConfirm({ show: true, ids: selectedIds, type: 'plant', title });
+            };
+
+            // Eksekusi Penghapusan
+            const executeDelete = () => {
+                if (deleteConfirm.type === 'plant') {
+                    setPlants(plants.filter(p => !deleteConfirm.ids.includes(p.id)));
+                    setLogs(logs.filter(l => !deleteConfirm.ids.includes(l.plantId)));
+                    setSelectedIds([]);
+                    setIsSelectMode(false);
+                } else {
+                    setLogs(logs.filter(l => !deleteConfirm.ids.includes(l.id)));
+                }
+                setDeleteConfirm({ show: false, ids: [], type: null, title: '' });
             };
 
             const closeModals = () => { setShowModal(false); setEditingItem(null); setTempImage(''); };
@@ -210,28 +256,41 @@
                         <div className="flex justify-between items-center mb-6">
                             <div>
                                 <h1 className="text-2xl font-bold text-emerald-800 flex items-center gap-2">
-                                    <Icon name="leaf" size={24} className="text-emerald-500" /> TikaPlant's
+                                    <Icon name="flower" size={24} className="text-pink-500 fill-pink-500" /> TikaPlant's
                                 </h1>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sistem Monitoring Kebun</p>
                             </div>
-                            <div className="flex gap-2 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100 shadow-inner">
-                                <div className="pr-2 border-r border-slate-200 text-center">
-                                    <div className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Hidup</div>
-                                    <div className="text-lg font-bold text-emerald-600 leading-none">{plants.filter(p => p.status === 'Hidup').length}</div>
-                                </div>
-                                <div className="pl-2 text-center">
-                                    <div className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Total</div>
-                                    <div className="text-lg font-bold text-slate-500 leading-none">{plants.length}</div>
+                            
+                            <div className="flex items-center gap-2">
+                                {/* Tombol Toggle Mode Pilih */}
+                                {activeTab === 'master' && (
+                                    <button 
+                                        onClick={() => { setIsSelectMode(!isSelectMode); setSelectedIds([]); }}
+                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isSelectMode ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}
+                                    >
+                                        <Icon name={isSelectMode ? "check-circle" : "check"} size={20} />
+                                    </button>
+                                )}
+                                
+                                <div className="flex gap-2 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100 shadow-inner">
+                                    <div className="pr-2 border-r border-slate-200 text-center">
+                                        <div className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Hidup</div>
+                                        <div className="text-lg font-bold text-emerald-600 leading-none">{plants.filter(p => p.status === 'Hidup').length}</div>
+                                    </div>
+                                    <div className="pl-2 text-center">
+                                        <div className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Total</div>
+                                        <div className="text-lg font-bold text-slate-500 leading-none">{plants.length}</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
                         <nav className="flex gap-8">
-                            <button onClick={() => setActiveTab('master')} className={`pb-2 text-xs font-bold uppercase tracking-wider relative transition-all ${activeTab === 'master' ? 'text-emerald-700' : 'text-slate-300'}`}>
+                            <button onClick={() => { setActiveTab('master'); setIsSelectMode(false); }} className={`pb-2 text-xs font-bold uppercase tracking-wider relative transition-all ${activeTab === 'master' ? 'text-emerald-700' : 'text-slate-300'}`}>
                                 Daftar Tanaman
                                 {activeTab === 'master' && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full" />}
                             </button>
-                            <button onClick={() => setActiveTab('logs')} className={`pb-2 text-xs font-bold uppercase tracking-wider relative transition-all ${activeTab === 'logs' ? 'text-emerald-700' : 'text-slate-300'}`}>
+                            <button onClick={() => { setActiveTab('logs'); setIsSelectMode(false); }} className={`pb-2 text-xs font-bold uppercase tracking-wider relative transition-all ${activeTab === 'logs' ? 'text-emerald-700' : 'text-slate-300'}`}>
                                 Log Harian
                                 {activeTab === 'logs' && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full" />}
                             </button>
@@ -242,10 +301,30 @@
                     <div className="p-4 flex-1">
                         {activeTab === 'master' ? (
                             <div className="space-y-4 fade-in">
+                                {isSelectMode && (
+                                    <div className="flex justify-between items-center px-2 mb-2">
+                                        <button onClick={toggleSelectAll} className="text-xs font-bold text-emerald-700 uppercase">
+                                            {selectedIds.length === plants.length ? "Batal Pilih Semua" : "Pilih Semua"}
+                                        </button>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{selectedIds.length} Terpilih</span>
+                                    </div>
+                                )}
                                 {plants.map(p => (
-                                    <div key={p.id} className={`bg-white p-4 rounded-3xl shadow-md border border-slate-100 transition-all ${p.status === 'Mati' ? 'opacity-60 grayscale bg-slate-50' : ''}`}>
-                                        {/* Bagian Atas Kartu: Foto, ID, Tanggal, Status */}
-                                        <div className="flex items-center gap-3 mb-3 pb-2 border-b border-slate-50">
+                                    <div 
+                                        key={p.id} 
+                                        onClick={() => isSelectMode && toggleSelect(p.id)}
+                                        className={`bg-white p-4 rounded-3xl shadow-md border transition-all relative ${p.status === 'Mati' ? 'opacity-60 grayscale bg-slate-50' : ''} ${isSelectMode && selectedIds.includes(p.id) ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-100'}`}
+                                    >
+                                        {/* Checkbox Overlay in Select Mode */}
+                                        {isSelectMode && (
+                                            <div className="absolute top-4 left-4 z-10">
+                                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 ${selectedIds.includes(p.id) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200'}`}>
+                                                    {selectedIds.includes(p.id) && <Icon name="check" size={14} />}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className={`flex items-center gap-3 mb-3 pb-2 border-b border-slate-50 ${isSelectMode ? 'ml-8' : ''}`}>
                                             <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden border shadow-inner flex-shrink-0 flex items-center justify-center">
                                                 {p.foto ? <img src={p.foto} className="w-full h-full object-cover" /> : <Icon name="image" size={18} className="text-slate-300" />}
                                             </div>
@@ -258,8 +337,7 @@
                                             </span>
                                         </div>
 
-                                        {/* Bagian Bawah Kartu: Info Tanaman & Tombol Aksi */}
-                                        <div className="flex justify-between items-end text-xs font-bold text-slate-600">
+                                        <div className={`flex justify-between items-end text-xs font-bold text-slate-600 ${isSelectMode ? 'ml-8' : ''}`}>
                                             <div className="space-y-0.5">
                                                 <div className="text-[15px] font-black text-slate-800 leading-tight truncate max-w-[150px]">{p.nama}</div>
                                                 <div className="flex gap-2 items-center text-[10px] text-slate-400 font-medium">
@@ -269,21 +347,22 @@
                                                 </div>
                                             </div>
                                             
-                                            {/* AREA TOMBOL AKSI */}
-                                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                <button 
-                                                    onClick={() => { setModalType('plant'); setEditingItem(p); setTempImage(p.foto); setShowModal(true); }} 
-                                                    className="w-10 h-10 flex items-center justify-center bg-blue-100 text-blue-700 rounded-xl active:scale-90 transition-all border border-blue-200"
-                                                >
-                                                    <Icon name="edit-2" size={18} />
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDeletePlant(p.id)} 
-                                                    className="w-10 h-10 flex items-center justify-center bg-red-100 text-red-700 rounded-xl active:scale-90 transition-all border border-red-200"
-                                                >
-                                                    <Icon name="trash-2" size={18} />
-                                                </button>
-                                            </div>
+                                            {!isSelectMode && (
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setModalType('plant'); setEditingItem(p); setTempImage(p.foto); setShowModal(true); }} 
+                                                        className="w-10 h-10 flex items-center justify-center bg-blue-100 text-blue-700 rounded-xl active:scale-90 transition-all border border-blue-200"
+                                                    >
+                                                        <Icon name="edit-2" size={18} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ show: true, ids: [p.id], type: 'plant', title: p.nama }); }} 
+                                                        className="w-10 h-10 flex items-center justify-center bg-red-100 text-red-700 rounded-xl active:scale-90 transition-all border border-red-200"
+                                                    >
+                                                        <Icon name="trash-2" size={18} />
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -313,7 +392,7 @@
                                                 <span className={`${l.kondisi === 'Mati' ? 'text-rose-600 bg-rose-50' : 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-md`}>{l.kondisi}</span>
                                                 <div className="flex gap-1 border-l pl-2 border-slate-100">
                                                     <button onClick={() => { setModalType('log'); setEditingItem(l); setTempImage(l.foto); setShowModal(true); }} className="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl active:scale-90 border border-blue-100"><Icon name="edit-3" size={16}/></button>
-                                                    <button onClick={() => handleDeleteLog(l.id)} className="w-9 h-9 flex items-center justify-center bg-red-50 text-red-600 rounded-xl active:scale-90 border border-red-100"><Icon name="trash-2" size={16}/></button>
+                                                    <button onClick={() => setDeleteConfirm({ show: true, ids: [l.id], type: 'log', title: `Log ${l.plantId}` })} className="w-9 h-9 flex items-center justify-center bg-red-50 text-red-600 rounded-xl active:scale-90 border border-red-100"><Icon name="trash-2" size={16}/></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -323,13 +402,65 @@
                         )}
                     </div>
 
-                    {/* Tombol Tambah Melayang */}
-                    <button 
-                        onClick={() => { setModalType(activeTab === 'master' ? 'plant' : 'log'); setEditingItem(null); setTempImage(''); setShowModal(true); }} 
-                        className="fixed bottom-8 right-8 w-16 h-16 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-30 border-4 border-white"
-                    >
-                        <Icon name="plus" size={32} />
-                    </button>
+                    {/* Bar Aksi Seleksi Massal (Muncul di Bawah) */}
+                    {isSelectMode && (
+                        <div className="fixed bottom-0 left-0 right-0 p-4 pb-8 bg-white border-t border-slate-100 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-40 selection-bar">
+                            <div className="max-w-md mx-auto flex gap-3">
+                                <button 
+                                    onClick={() => { setIsSelectMode(false); setSelectedIds([]); }}
+                                    className="flex-1 bg-slate-100 text-slate-500 p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px]"
+                                >
+                                    Batal
+                                </button>
+                                <button 
+                                    onClick={triggerBulkDelete}
+                                    disabled={selectedIds.length === 0}
+                                    className={`flex-[2] p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg transition-all ${selectedIds.length > 0 ? 'bg-rose-600 text-white shadow-rose-200 active:scale-95' : 'bg-slate-200 text-slate-400'}`}
+                                >
+                                    Hapus {selectedIds.length} Tanaman
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Tombol Tambah (Hanya di mode normal) */}
+                    {!isSelectMode && (
+                        <button 
+                            onClick={() => { setModalType(activeTab === 'master' ? 'plant' : 'log'); setEditingItem(null); setTempImage(''); setShowModal(true); }} 
+                            className="fixed bottom-8 right-8 w-16 h-16 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-30 border-4 border-white"
+                        >
+                            <Icon name="plus" size={32} />
+                        </button>
+                    )}
+
+                    {/* MODAL KONFIRMASI HAPUS */}
+                    {deleteConfirm.show && (
+                        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6 text-center">
+                            <div className="bg-white w-full max-w-xs rounded-[2rem] p-8 shadow-2xl modal-up">
+                                <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Icon name="alert" size={32} />
+                                </div>
+                                <h3 className="text-lg font-black text-slate-800 mb-2 uppercase tracking-tighter">Hapus Data?</h3>
+                                <p className="text-slate-500 text-[10px] mb-6 leading-relaxed px-2 font-medium">
+                                    Apakah kamu yakin ingin menghapus <span className="font-bold text-rose-600">"{deleteConfirm.title}"</span>? Tindakan ini akan menghapus semua riwayat terkait.
+                                </p>
+                                <div className="flex flex-col gap-2">
+                                    <button 
+                                        onClick={executeDelete} 
+                                        className="w-full bg-rose-600 text-white p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-rose-200 active:scale-95 transition-all"
+                                    >
+                                        Ya, Hapus Sekarang
+                                    </button>
+                                    <button 
+                                        onClick={() => setDeleteConfirm({ show: false, ids: [], type: null, title: '' })} 
+                                        className="w-full bg-slate-100 text-slate-500 p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] active:scale-95 transition-all"
+                                    >
+                                        Batal
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Modal Input */}
                     {showModal && (
@@ -352,7 +483,7 @@
                                         <div className="space-y-4">
                                             <div className="space-y-1">
                                                 <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nama Tanaman</label>
-                                                <input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:bg-white focus:border-emerald-300 font-semibold" />
+                                                <input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:bg-white focus:border-emerald-300 font-semibold transition-all" />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="space-y-1">
