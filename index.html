@@ -52,7 +52,6 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, Fragment } = React;
 
-        // PRIORITAS KONFIGURASI DARI ENVIRONMENT (VERCEL/APP)
         const firebaseConfig = typeof __firebase_config !== 'undefined' 
             ? JSON.parse(__firebase_config) 
             : {
@@ -203,7 +202,6 @@
                 }
             };
 
-            // KESEPAKATAN LOGIKA PENGKODEAN ID (DILOCK)
             const generateId = (name, existingPlants = plants) => {
                 if (!name) return `PLT-${Date.now().toString().slice(-3)}`;
                 const words = name.trim().replace(/[^a-zA-Z\s]/g, '').split(/\s+/).filter(w => w.length > 0);
@@ -259,10 +257,9 @@
                                 foto: data.foto
                             };
                             tempPlants.push({ id: newId, ...plantData });
-
                             batch.set(trayCol.doc(cid), { ...data, plantId: newId });
                             batch.set(plantCol.doc(newId), plantData);
-                            batch.add(logCol, logData);
+                            batch.set(logCol.doc(), logData);
                         });
                         await batch.commit();
                     } else {
@@ -270,6 +267,28 @@
                         const ref = baseDataRef.collection(col);
                         if (editingItem && editingItem.id) {
                             await ref.doc(editingItem.id).set(data, {merge: true});
+                            
+                            // LOGIKA ANTI DUPLIKAT SAAT MATI
+                            if (modalType === 'plant' && data.status === 'Mati') {
+                                const today = new Date().toISOString().split('T')[0];
+                                const existingLogToday = logs.find(l => l.plantId === editingItem.id && l.tanggal === today);
+                                
+                                if (existingLogToday) {
+                                    // Jika sudah ada log hari ini, UPDATE saja fasenya
+                                    await baseDataRef.collection('logs').doc(existingLogToday.id).update({
+                                        fase: 'Mati', 
+                                        kondisi: 'Mati',
+                                        foto: data.foto || existingLogToday.foto
+                                    });
+                                } else {
+                                    // Jika belum ada log hari ini, baru TAMBAH baru
+                                    await baseDataRef.collection('logs').add({
+                                        plantId: editingItem.id,
+                                        tanggal: today,
+                                        tinggi: 0, daun: 0, fase: 'Mati', kondisi: 'Mati', foto: data.foto || ''
+                                    });
+                                }
+                            }
                         } else if (modalType === 'plant') {
                             await ref.doc(generateId(data.nama)).set(data);
                         } else {
@@ -282,7 +301,39 @@
                 } catch (err) { alert(err.message); } finally { setIsSaving(false); }
             };
 
-            // FUNGSI KHUSUS UNTUK SINKRONISASI DATA LAMA TRAY A & B
+            const handleBulkMarkAsDead = async () => {
+                if (!db || selectedItems.length === 0 || isSaving) return;
+                setIsSaving(true);
+                try {
+                    const baseRef = db.collection('artifacts').doc(appId).collection('public').doc('data');
+                    const batch = db.batch();
+                    const today = new Date().toISOString().split('T')[0];
+
+                    selectedItems.forEach(id => {
+                        // Update status di Tanaman Master
+                        batch.update(baseRef.collection('plants').doc(id), { status: 'Mati' });
+                        
+                        // LOGIKA ANTI DUPLIKAT MASSAL
+                        const existingLogToday = logs.find(l => l.plantId === id && l.tanggal === today);
+                        if (existingLogToday) {
+                            batch.update(baseRef.collection('logs').doc(existingLogToday.id), { 
+                                fase: "Mati", 
+                                kondisi: "Mati" 
+                            });
+                        } else {
+                            const logRef = baseRef.collection('logs').doc();
+                            batch.set(logRef, {
+                                plantId: id,
+                                tanggal: today,
+                                tinggi: 0, daun: 0, fase: "Mati", kondisi: "Mati", foto: ""
+                            });
+                        }
+                    });
+                    await batch.commit();
+                    setIsMultiSelect(false); setSelectedItems([]);
+                } catch (e) { alert(e.message); } finally { setIsSaving(false); }
+            };
+
             const handleSyncOldTray = async () => {
                 if (!db || isSaving) return;
                 setIsSaving(true);
@@ -294,7 +345,6 @@
 
                     for (let cellId in trayData) {
                         const cell = trayData[cellId];
-                        // Jika sudah ada data di tray tapi belum ada ID tanaman-nya
                         if (cell && cell.nama && !cell.plantId) {
                             const newId = generateId(cell.nama, tempPlants);
                             const plantData = {
@@ -310,21 +360,15 @@
                                 tanggal: plantData.tanggal,
                                 tinggi: 0, daun: 0, fase: "Semai", kondisi: "Sehat", foto: ""
                             };
-
                             tempPlants.push({id: newId, ...plantData});
                             batch.update(baseDataRef.collection('seedling_tray').doc(cellId), { plantId: newId });
                             batch.set(baseDataRef.collection('plants').doc(newId), plantData);
-                            batch.add(baseDataRef.collection('logs'), logData);
+                            batch.set(baseDataRef.collection('logs').doc(), logData);
                             count++;
                         }
                     }
-
-                    if (count > 0) {
-                        await batch.commit();
-                        alert(`Berhasil menyinkronkan ${count} data tray ke database tanaman!`);
-                    } else {
-                        alert("Semua data tray sudah sinkron.");
-                    }
+                    if (count > 0) { await batch.commit(); alert(`Berhasil menyinkronkan ${count} data tray!`); } 
+                    else { alert("Semua data tray sudah sinkron."); }
                 } catch (e) { alert("Sinkron Gagal: " + e.message); } finally { setIsSaving(false); }
             };
 
@@ -345,19 +389,7 @@
                     selectedItems.forEach(id => batch.delete(ref.doc(id)));
                     await batch.commit();
                     setIsMultiSelect(false); setSelectedItems([]);
-                } catch (e) { console.error(e); } finally { setIsSaving(false); }
-            };
-
-            const handleBulkMarkAsDead = async () => {
-                if (!db || selectedItems.length === 0 || isSaving) return;
-                setIsSaving(true);
-                try {
-                    const ref = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
-                    const batch = db.batch();
-                    selectedItems.forEach(id => batch.update(ref.doc(id), { status: 'Mati' }));
-                    await batch.commit();
-                    setIsMultiSelect(false); setSelectedItems([]);
-                } catch (e) { console.error(e); } finally { setIsSaving(false); }
+                } catch (e) { alert(e.message); } finally { setIsSaving(false); }
             };
 
             const handleClearCell = async () => {
@@ -426,23 +458,25 @@
                             ))}
                         </nav>
 
-                        {activeTab !== 'tray' ? (
-                            <div className="flex gap-2">
-                                <div className="relative flex-1">
-                                    <div className="absolute inset-y-0 left-4 flex items-center text-slate-300"><Icon name="search" size={14} /></div>
-                                    <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari data..." className="w-full pl-10 pr-4 py-3 bg-slate-100 rounded-2xl outline-none font-bold text-xs focus:bg-white shadow-inner border-none transition-all"/>
+                        <div className="flex gap-2">
+                            {activeTab !== 'tray' ? (
+                                <Fragment>
+                                    <div className="relative flex-1">
+                                        <div className="absolute inset-y-0 left-4 flex items-center text-slate-300"><Icon name="search" size={14} /></div>
+                                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari data..." className="w-full pl-10 pr-4 py-3 bg-slate-100 rounded-2xl outline-none font-bold text-xs focus:bg-white shadow-inner border-none transition-all"/>
+                                    </div>
+                                    <button onClick={() => { setIsMultiSelect(!isMultiSelect); setSelectedItems([]); }} className={`px-4 rounded-2xl text-[9px] font-black uppercase tracking-widest border transition-all shadow-sm ${isMultiSelect ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-white text-slate-400 border-slate-100'}`}>{isMultiSelect ? "Batal" : "Pilih"}</button>
+                                </Fragment>
+                            ) : (
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 w-full">
+                                    {TRAYS.map(t => (
+                                        <button key={t.id} onClick={() => {setActiveTray(t); setSelectedItems([]);}} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 ${activeTray.id === t.id ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg' : 'bg-white text-slate-400 border-slate-100'}`}>
+                                            {t.label} <span className="opacity-50 ml-1">({t.rows}x{t.cols})</span>
+                                        </button>
+                                    ))}
                                 </div>
-                                <button onClick={() => { setIsMultiSelect(!isMultiSelect); setSelectedItems([]); }} className={`px-4 rounded-2xl text-[9px] font-black uppercase tracking-widest border transition-all shadow-sm ${isMultiSelect ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-white text-slate-400 border-slate-100'}`}>{isMultiSelect ? "Batal" : "Pilih"}</button>
-                            </div>
-                        ) : (
-                            <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-                                {TRAYS.map(t => (
-                                    <button key={t.id} onClick={() => {setActiveTray(t); setSelectedItems([]);}} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeTray.id === t.id ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg' : 'bg-white text-slate-400 border-slate-100'}`}>
-                                        {t.label} <span className="opacity-50 ml-1">({t.rows}x{t.cols})</span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </header>
 
                     <main className="p-4 flex-1 space-y-4 fade-in">
@@ -500,7 +534,10 @@
                                     <div className="grid grid-cols-3 gap-2">
                                         <div className="bg-slate-50/70 p-3 rounded-2xl text-center border border-slate-100/50 shadow-inner"><div className="text-[8px] text-slate-400 uppercase font-black mb-1">TINGGI</div><div className="font-extrabold text-slate-700 text-sm">{l.tinggi} cm</div></div>
                                         <div className="bg-slate-50/70 p-3 rounded-2xl text-center border border-slate-100/50 shadow-inner"><div className="text-[8px] text-slate-400 uppercase font-black mb-1">DAUN</div><div className="font-extrabold text-slate-700 text-sm">{l.daun} H</div></div>
-                                        <div className="bg-emerald-50 p-3 rounded-2xl text-center border border-emerald-100 shadow-inner"><div className="text-[8px] text-emerald-600/70 uppercase font-black mb-1">FASE</div><div className="font-extrabold text-emerald-700 text-sm uppercase">{l.fase}</div></div>
+                                        <div className={`${l.fase === 'Mati' ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'} p-3 rounded-2xl text-center border shadow-inner`}>
+                                            <div className={`text-[8px] ${l.fase === 'Mati' ? 'text-rose-600' : 'text-emerald-600'} uppercase font-black mb-1`}>FASE</div>
+                                            <div className={`font-extrabold ${l.fase === 'Mati' ? 'text-rose-700' : 'text-emerald-700'} text-sm uppercase`}>{l.fase}</div>
+                                        </div>
                                     </div>
                                 </div>
                             ))
@@ -510,14 +547,9 @@
                         {activeTab === 'tray' && (
                             <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden fade-in relative">
                                 <div className="mb-6 flex justify-between items-center px-2">
-                                    <div>
-                                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest leading-none">Lubang {activeTray.label}</h2>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">{isMultiSelect ? "Pilih beberapa lubang" : "Geser tray menggunakan jari"}</p>
-                                    </div>
+                                    <div><h2 className="text-sm font-black text-slate-800 uppercase tracking-widest leading-none">Lubang {activeTray.label}</h2><p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Isi data benih</p></div>
                                     <div className="flex gap-2">
-                                        <button onClick={handleSyncOldTray} className="p-2 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 active:scale-90 shadow-sm transition-all" title="Sinkronkan Data Lama">
-                                            <Icon name="sync" size={16}/>
-                                        </button>
+                                        <button onClick={handleSyncOldTray} className="p-2 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 active:scale-90 shadow-sm" title="Sinkronkan Data Tray"><Icon name="sync" size={16}/></button>
                                         <button onClick={() => { setIsMultiSelect(!isMultiSelect); setSelectedItems([]); }} className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all shadow-sm ${isMultiSelect ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-white text-slate-500 border-slate-200'}`}>{isMultiSelect ? "Batal" : "Pilih Banyak"}</button>
                                     </div>
                                 </div>
@@ -592,7 +624,17 @@
                                                 <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Jml Daun</label><input name="daun" type="number" defaultValue={editingItem?.daun} placeholder="0" required className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold shadow-inner"/></div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1"><label className="text-[10px] font-black text-emerald-600 uppercase ml-1">Fase</label><select name="fase" defaultValue={editingItem?.fase || 'Semai'} className="w-full p-4 bg-emerald-50 text-emerald-700 rounded-2xl border-none outline-none font-black shadow-sm"><option>Semai</option><option>Vegetatif</option><option>Bunga</option><option>Buah</option><option>Panen</option></select></div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-black text-emerald-600 uppercase ml-1">Fase</label>
+                                                    <select name="fase" defaultValue={editingItem?.fase || 'Semai'} className="w-full p-4 bg-emerald-50 text-emerald-700 rounded-2xl border-none outline-none font-black shadow-sm">
+                                                        <option>Semai</option>
+                                                        <option>Vegetatif</option>
+                                                        <option>Bunga</option>
+                                                        <option>Buah</option>
+                                                        <option>Panen</option>
+                                                        <option value="Mati">Mati</option>
+                                                    </select>
+                                                </div>
                                                 <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Tgl Cek</label><input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold shadow-inner"/></div>
                                             </div>
                                         </Fragment>
