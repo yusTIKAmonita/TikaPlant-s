@@ -124,11 +124,7 @@
                     .then(res => setUser(res.user))
                     .catch(e => {
                         console.error(e);
-                        if (e.code === 'auth/configuration-not-found') {
-                            setDbError("Fitur Login Anonim belum aktif.");
-                        } else {
-                            setDbError("Koneksi Gagal: " + e.message);
-                        }
+                        setDbError("Gagal masuk ke Awan Hijau.");
                     });
             }, []);
 
@@ -142,7 +138,7 @@
                     setDbError(null);
                 }, (err) => {
                     setIsOnline(false);
-                    if (err.code === 'permission-denied') setDbError("Akses Ditolak: Cek Rules di Firestore.");
+                    console.error("Firestore Error:", err);
                 });
 
                 const unsubL = baseRef.collection('logs').onSnapshot(snap => {
@@ -154,26 +150,27 @@
                 return () => { unsubP(); unsubL(); };
             }, [user]);
 
-            // Fungsi untuk mengecilkan foto agar tidak melebihi limit Firestore
+            // Fungsi kompresi yang lebih agresif (maks 300px)
             const resizeImage = (base64Str) => {
                 return new Promise((resolve) => {
                     const img = new Image();
                     img.src = base64Str;
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 400;
-                        const MAX_HEIGHT = 400;
+                        const MAX_SIZE = 300; // Ukuran kecil supaya pasti masuk Firestore
                         let width = img.width;
                         let height = img.height;
+                        
                         if (width > height) {
-                            if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                            if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
                         } else {
-                            if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                            if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
                         }
+                        
                         canvas.width = width; canvas.height = height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.7)); // Kompres ke kualitas 70%
+                        resolve(canvas.toDataURL('image/jpeg', 0.5)); // Kualitas 50% untuk hemat tempat
                     };
                 });
             };
@@ -182,7 +179,7 @@
                 const file = e.target.files[0];
                 if (file) {
                     const reader = new FileReader();
-                    reader.onloadend = async () => {
+                    reader.onload = async () => {
                         const resized = await resizeImage(reader.result);
                         setTempImage(resized);
                     };
@@ -191,6 +188,7 @@
             };
 
             const generateId = (name) => {
+                if (!name) return "PLANT-" + Math.floor(Math.random() * 1000);
                 const words = name.trim().split(/\s+/).filter(w => w.length > 0);
                 let p = words.length >= 3 ? words[0][0] + words[1][0] + words[2][0] : 
                         words.length === 2 ? words[0][0] + words[1].substring(0, 2) : 
@@ -205,30 +203,38 @@
                 if (isSaving) return;
                 
                 setIsSaving(true);
-                const f = new FormData(e.target);
-                const data = Object.fromEntries(f.entries());
-                data.foto = tempImage || editingItem?.foto || '';
+                try {
+                    const f = new FormData(e.target);
+                    const data = Object.fromEntries(f.entries());
+                    data.foto = tempImage || editingItem?.foto || '';
 
-                if (isOnline && db) {
+                    if (!isOnline || !db) {
+                        throw new Error("Aplikasi sedang offline. Pastikan ikon Awan Hijau Aktif.");
+                    }
+
                     const col = modalType === 'plant' ? 'plants' : 'logs';
                     const ref = db.collection('artifacts').doc(MY_APP_ID).collection('public').doc('data').collection(col);
-                    try {
-                        if (editingItem) await ref.doc(editingItem.id).set(data, {merge: true});
-                        else if (modalType === 'plant') await ref.doc(generateId(data.nama)).set(data);
-                        else await ref.add(data);
-                        
-                        setShowModal(false);
-                        setEditingItem(null);
-                        setTempImage('');
-                    } catch (err) { 
-                        console.error(err);
-                        setDbError("Gagal simpan: " + err.message);
-                    } finally {
-                        setIsSaving(false);
+                    
+                    if (editingItem) {
+                        await ref.doc(editingItem.id).set(data, {merge: true});
+                    } else {
+                        if (modalType === 'plant') {
+                            const newId = generateId(data.nama);
+                            await ref.doc(newId).set(data);
+                        } else {
+                            await ref.add(data);
+                        }
                     }
-                } else {
+                    
+                    setShowModal(false);
+                    setEditingItem(null);
+                    setTempImage('');
+                    setDbError(null);
+                } catch (err) { 
+                    console.error("Save Error:", err);
+                    setDbError("Simpan Gagal: " + (err.message || "Kesalahan Server"));
+                } finally {
                     setIsSaving(false);
-                    setDbError("Aplikasi sedang offline, tidak bisa menyimpan.");
                 }
             };
 
@@ -272,7 +278,7 @@
                         </div>
 
                         {dbError && (
-                            <div className="mb-4 p-3 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-3 fade-in">
+                            <div className="mb-4 p-3 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-3 fade-in shadow-inner">
                                 <Icon name="alert" size={18} className="text-rose-500 mt-0.5 flex-shrink-0" />
                                 <div className="text-[10px] text-rose-600 font-bold uppercase leading-tight">{dbError}</div>
                             </div>
@@ -290,11 +296,10 @@
 
                     <main className="p-4 flex-1 space-y-4 fade-in">
                         {activeTab === 'master' ? (
-                            plants.length === 0 ? <div className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest leading-relaxed px-10">Memuat data dari awan...</div> :
                             plants.map(p => (
                                 <div key={p.id} className={`bg-white p-4 rounded-[2rem] border shadow-sm flex items-center gap-4 ${p.status === 'Mati' ? 'opacity-50 grayscale bg-slate-50' : 'border-slate-100'}`}>
                                     <div className="w-14 h-14 rounded-2xl bg-slate-100 overflow-hidden border border-slate-200 flex-shrink-0">
-                                        {p.foto ? <img src={p.foto} className="w-full h-full object-cover"/> : <Icon name="flower" size={24} className="m-auto mt-4"/>}
+                                        {p.foto ? <img src={p.foto} className="w-full h-full object-cover"/> : <Icon name="flower" size={24} className="m-auto mt-4 text-slate-300"/>}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="text-[10px] font-black text-emerald-800 uppercase tracking-tight">{p.id}</div>
@@ -302,19 +307,19 @@
                                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{p.varietas}</div>
                                     </div>
                                     <div className="flex gap-1">
-                                        <button onClick={() => {setEditingItem(p); setTempImage(p.foto); setModalType('plant'); setShowModal(true);}} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 active:scale-90 transition-all shadow-sm"><Icon name="edit" size={16}/></button>
-                                        <button onClick={() => handleDelete(p.id, 'plant')} className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 active:scale-90 transition-all shadow-sm"><Icon name="trash" size={16}/></button>
+                                        <button onClick={() => {setEditingItem(p); setTempImage(p.foto); setModalType('plant'); setShowModal(true);}} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 active:scale-90 transition-all"><Icon name="edit" size={16}/></button>
+                                        <button onClick={() => handleDelete(p.id, 'plant')} className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 active:scale-90 transition-all"><Icon name="trash" size={16}/></button>
                                     </div>
                                 </div>
                             ))
                         ) : (
-                            logs.length === 0 ? <div className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest leading-relaxed px-10">Belum ada catatan log. Klik (+) untuk menambah.</div> :
+                            logs.length === 0 ? <div className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest leading-relaxed px-10">Klik (+) untuk menambah catatan.</div> :
                             logs.map(l => (
                                 <div key={l.id} className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-5">
                                     <div className="flex justify-between items-center">
                                         <div className="flex items-center gap-3">
                                             <div className="w-11 h-11 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 overflow-hidden">
-                                                {l.foto ? <img src={l.foto} className="w-full h-full object-cover" /> : <Icon name="flower" size={22} />}
+                                                {l.foto ? <img src={l.foto} className="w-full h-full object-cover" /> : <Icon name="flower" size={22} className="text-slate-200"/>}
                                             </div>
                                             <div>
                                                 <div className="text-[13px] font-black text-slate-800 uppercase leading-none">{l.plantId}</div>
@@ -370,11 +375,11 @@
                                     </div>
                                     {modalType === 'plant' ? (
                                         <Fragment>
-                                            <input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold text-slate-700 focus:bg-white transition-colors" placeholder="Nama Tanaman"/>
+                                            <input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold text-slate-700 focus:bg-white" placeholder="Nama Tanaman"/>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <input name="varietas" defaultValue={editingItem?.varietas} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold focus:bg-white" placeholder="Varietas"/>
                                                 <select name="status" defaultValue={editingItem?.status || 'Hidup'} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold">
-                                                    <option>Hidup</option><option>Mati</option>
+                                                    <option value="Hidup">Hidup</option><option value="Mati">Mati</option>
                                                 </select>
                                             </div>
                                             <input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold focus:bg-white"/>
@@ -395,9 +400,9 @@
                                     <button 
                                         type="submit" 
                                         disabled={isSaving}
-                                        className={`w-full ${isSaving ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600'} text-white p-5 rounded-[1.5rem] font-black uppercase text-[11px] shadow-xl active:scale-95 transition-all mt-4 tracking-widest`}
+                                        className={`w-full ${isSaving ? 'bg-emerald-400 cursor-not-allowed animate-pulse' : 'bg-emerald-600'} text-white p-5 rounded-[1.5rem] font-black uppercase text-[11px] shadow-xl active:scale-95 transition-all mt-4 tracking-widest`}
                                     >
-                                        {isSaving ? 'Menyimpan...' : 'Simpan Data'}
+                                        {isSaving ? 'Sedang Menyimpan...' : 'Simpan Data'}
                                     </button>
                                 </form>
                             </div>
