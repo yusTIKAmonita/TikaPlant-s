@@ -291,24 +291,27 @@
                         {activeTab === 'master' && (
                             filteredPlants.length === 0 ? <div className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest leading-relaxed px-10">Data tidak ditemukan.</div> :
                             filteredPlants.map(p => (
-                                <div key={p.id} className={`bg-white p-4 rounded-[2rem] border shadow-sm flex items-center gap-4 ${p.status === 'Mati' ? 'opacity-50 grayscale bg-slate-50' : 'border-slate-100'}`}>
-                                    <div className="w-14 h-14 rounded-2xl bg-slate-100 overflow-hidden border border-slate-200 flex-shrink-0">
-                                        {p.foto ? <img src={p.foto} className="w-full h-full object-cover"/> : <Icon name="flower" size={24} className="m-auto mt-4 text-slate-200"/>}
+                                <div key={p.id} className={`bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-5 ${p.status === 'Mati' ? 'opacity-50 grayscale bg-slate-50' : ''}`}>
+                                    {/* Bagian Foto */}
+                                    <div className="w-16 h-16 rounded-[1.5rem] bg-slate-50 overflow-hidden border border-slate-100 flex-shrink-0 shadow-inner">
+                                        {p.foto ? <img src={p.foto} className="w-full h-full object-cover"/> : <Icon name="flower" size={26} className="m-auto mt-4 text-slate-200"/>}
                                     </div>
+                                    
+                                    {/* Bagian Informasi (Tampilan Sesuai Gambar image_a8bf22.png) */}
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-[10px] font-black text-emerald-800 uppercase tracking-tight leading-none">{p.id}</div>
-                                        <div className="text-[15px] font-extrabold text-slate-800 truncate my-0.5 leading-none">{p.nama}</div>
-                                        
-                                        {/* Tampilan Umur Baru: Minimalis & Elegan */}
-                                        <div className="text-[10px] font-medium text-emerald-600 tracking-tight leading-none mb-1 mt-1">
-                                            {calculateAge(p.tanggal)} hari
+                                        <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider leading-none mb-1">{p.id}</div>
+                                        <div className="text-base font-extrabold text-slate-800 leading-tight mb-1 truncate">{p.nama}</div>
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                            <span>{p.varietas || '-'}</span>
+                                            <span className="text-slate-200">|</span>
+                                            <span>{calculateAge(p.tanggal)} HARI</span>
                                         </div>
-                                        
-                                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter mt-1 leading-none">{p.varietas}</div>
                                     </div>
-                                    <div className="flex gap-1">
-                                        <button onClick={() => {setEditingItem(p); setTempImage(p.foto); setModalType('plant'); setShowModal(true);}} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 active:scale-90 transition-all shadow-sm"><Icon name="edit" size={16}/></button>
-                                        <button onClick={() => handleDelete(p.id, 'plant')} className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 active:scale-90 transition-all shadow-sm"><Icon name="trash" size={16}/></button>
+                                    
+                                    {/* Bagian Tombol Aksi */}
+                                    <div className="flex gap-2">
+                                        <button onClick={() => {setEditingItem(p); setTempImage(p.foto); setModalType('plant'); setShowModal(true);}} className="p-3 bg-blue-50 text-blue-500 rounded-2xl border border-blue-100 active:scale-90 transition-all shadow-sm"><Icon name="edit" size={16}/></button>
+                                        <button onClick={() => handleDelete(p.id, 'plant')} className="p-3 bg-rose-50 text-rose-500 rounded-2xl border border-rose-100 active:scale-90 transition-all shadow-sm"><Icon name="trash" size={16}/></button>
                                     </div>
                                 </div>
                             ))
