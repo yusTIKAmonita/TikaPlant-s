@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TikaPlant's Dashboard</title>
-    <!-- Library pendukung -->
+    <!-- Library pendukung via CDN -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,9 +16,9 @@
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { 
-            font-family: 'Inter', sans-serif; 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
             -webkit-tap-highlight-color: transparent; 
             background-color: #f8fafc;
         }
@@ -26,8 +26,6 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .modal-up { animation: modalUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes modalUp { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        .selection-bar { animation: slideUp 0.3s ease-out; }
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
     </style>
 </head>
 <body class="text-slate-700 text-sm">
@@ -36,7 +34,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, Fragment } = React;
 
-        // DATA AWAL (Default) - 18 Tanaman Kesepakatan
+        // --- DATA MASTER: 18 TANAMAN LENGKAP ---
         const INITIAL_PLANTS = [
             { id: 'STE-001', nama: 'Snapdragon Tetra', varietas: 'Floral', media: 'Tanah', tanggal: '2026-03-28', status: 'Hidup', foto: '' },
             { id: 'DPE-001', nama: 'Dwarf Petunia', varietas: 'Miniature', media: 'Tanah', tanggal: '2026-03-28', status: 'Hidup', foto: '' },
@@ -58,72 +56,56 @@
             { id: 'SER-001', nama: 'Sereh', varietas: 'Dapur', media: 'Tanah', tanggal: '2026-03-28', status: 'Hidup', foto: '' }
         ];
 
+        // --- DATA LOG AWAL ---
         const INITIAL_LOGS = [
-            { id: 'log-1', plantId: 'STE-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
-            { id: 'log-2', plantId: 'DPE-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
-            { id: 'log-3', plantId: 'ACR-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' },
-            { id: 'log-4', plantId: 'KAN-001', tanggal: '2026-03-30', tinggi: 0, daun: 0, fase: 'Semai', kondisi: 'Sehat', foto: '' }
+            { id: 'log-1', plantId: 'STE-001', tanggal: '2026-03-30', tinggi: 0.5, daun: 2, fase: 'Semai', kondisi: 'Sehat', foto: '' },
+            { id: 'log-2', plantId: 'KAN-001', tanggal: '2026-03-31', tinggi: 1.2, daun: 4, fase: 'Vegetatif', kondisi: 'Sehat', foto: '' }
         ];
 
-        // Konfigurasi Cloud
-        let db = null;
-        let auth = null;
-        let appId = 'default-app-id';
+        // --- KONFIGURASI FIREBASE ---
+        const MY_CLOUD_CONFIG = {
+            apiKey: "AIzaSyBJS2wHHjLonDIhtcqE2IZllTZOVu2w01M", 
+            authDomain: "tikaplant-s.firebaseapp.com",
+            projectId: "tikaplant-s",
+            storageBucket: "tikaplant-s.firebasestorage.app",
+            messagingSenderId: "857994265566",
+            appId: "1:857994265566:web:bf5c6bf879c1b9a36a134f",
+            measurementId: "G-3MEKH8YZRX"
+        };
+
+        const MY_APP_ID = "tika-plant-dashboard";
+        let db = null; let auth = null; let appId = MY_APP_ID;
 
         try {
-            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                const firebaseConfig = JSON.parse(__firebase_config);
-                if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
-                db = firebase.firestore();
-                auth = firebase.auth();
-                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            }
-        } catch (e) {
-            console.warn("Cloud config not found.");
-        }
+            const activeConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
+                ? JSON.parse(__firebase_config) : MY_CLOUD_CONFIG;
+            if (!firebase.apps.length) firebase.initializeApp(activeConfig);
+            db = firebase.firestore(); auth = firebase.auth();
+            appId = (typeof __app_id !== 'undefined' ? __app_id : MY_APP_ID);
+        } catch (e) { console.warn("Firebase Init Offline"); }
 
         const Icon = ({ name, size = 18, className = "" }) => {
             const icons = {
                 flower: (
                     <Fragment>
-                        <circle cx="12" cy="12" r="2.5" fill="currentColor" />
-                        <path d="M12 7.5c1.5-4.5 7.5-4.5 7.5 0s-6 7.5-7.5 7.5-7.5-3-7.5-7.5 6-4.5 7.5 0z" opacity="0.4" fill="currentColor" />
-                        <path d="M16.5 12c4.5 1.5 4.5 7.5 0 7.5s-7.5-6-7.5-7.5 3-7.5 7.5-7.5 4.5 6 0 7.5z" opacity="0.4" fill="currentColor" />
-                        <path d="M12 16.5c-1.5 4.5-7.5 4.5-7.5 0s6-7.5 7.5-7.5 7.5 3 7.5 7.5-6 4.5-7.5 0z" opacity="0.4" fill="currentColor" />
-                        <path d="M7.5 12c-4.5-1.5-4.5-7.5 0-7.5s7.5 6 7.5 7.5-3 7.5-7.5 7.5-4.5-6 0-7.5z" opacity="0.4" fill="currentColor" />
-                        <path d="M12 8c2-4 9-4 9 2s-5 6-9 6" /><path d="M16 12c4 2 4 9-2 9s-6-5-6-9" /><path d="M12 16c-2 4-9 4-9-2s5-6 9-6" /><path d="M8 12c-4-2-4-9 2-9s6 5 6 9" />
+                        <circle cx="12" cy="12" r="2.5" fill="#f472b6" />
+                        <path d="M12 7.5c1.5-4.5 7.5-4.5 7.5 0s-6 7.5-7.5 7.5-7.5-3-7.5-7.5 6-4.5 7.5 0z" opacity="0.4" fill="#f472b6" />
+                        <path d="M16.5 12c4.5 1.5 4.5 7.5 0 7.5s-7.5-6-7.5-7.5 3-7.5 7.5-7.5 4.5 6 0 7.5z" opacity="0.4" fill="#f472b6" />
+                        <path d="M12 16.5c-1.5 4.5-7.5 4.5-7.5 0s6-7.5 7.5-7.5 7.5 3 7.5 7.5-6 4.5-7.5 0z" opacity="0.4" fill="#f472b6" />
+                        <path d="M7.5 12c-4.5-1.5-4.5-7.5 0-7.5s7.5 6 7.5 7.5-3 7.5-7.5 7.5-4.5-6 0-7.5z" opacity="0.4" fill="#f472b6" />
                     </Fragment>
                 ),
-                leaf: <path d="M11 20a7 7 0 0 1-7-7c0-2.3 1.3-4.5 3.3-5.3A7 7 0 0 1 18 13a7 7 0 0 1-7 7z M2 21l9-9 M7 13h5 M11 12h5" />,
-                plus: <path d="M12 5v14M5 12h14" />,
-                check: <polyline points="20 6 9 17 4 12" />,
-                cloud: <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />,
-                lock: <Fragment><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></Fragment>,
-                "check-circle": <Fragment><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></Fragment>,
-                circle: <circle cx="12" cy="12" r="10" />,
-                "edit-2": <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />,
-                "edit-3": <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />,
-                "trash-2": <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />,
-                image: (
-                    <Fragment>
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
-                    </Fragment>
-                ),
-                camera: (
-                    <Fragment>
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" />
-                    </Fragment>
-                ),
-                alert: <Fragment><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></Fragment>,
-                x: <path d="M18 6L6 18M6 6l12 12" />,
-                "trending-up": <Fragment><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></Fragment>
+                leaf: <path d="M11 20a7 7 0 0 1-7-7c0-2.3 1.3-4.5 3.3-5.3A7 7 0 0 1 18 13a7 7 0 0 1-7 7z M2 21l9-9" stroke="currentColor" strokeWidth="2"/>,
+                plus: <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="3"/>,
+                cloud: <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" stroke="currentColor" strokeWidth="2"/>,
+                lock: <Fragment><rect x="3" y="11" width="18" height="11" rx="2" ry="2" stroke="currentColor" strokeWidth="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2"/></Fragment>,
+                camera: <Fragment><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="2"/></Fragment>,
+                x: <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="3"/>,
+                trash: <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" stroke="currentColor" strokeWidth="2"/>,
+                edit: <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke="currentColor" strokeWidth="2"/>,
+                image: <Fragment><rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke="currentColor" strokeWidth="2"/><circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" strokeWidth="2"/><polyline points="21 15 16 10 5 21" stroke="currentColor" strokeWidth="2"/></Fragment>
             };
-
-            return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                    {icons[name] || null}
-                </svg>
-            );
+            return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>{icons[name] || null}</svg>;
         };
 
         const App = () => {
@@ -132,37 +114,15 @@
             const [user, setUser] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [isOnline, setIsOnline] = useState(false);
-
             const [activeTab, setActiveTab] = useState('master');
             const [showModal, setShowModal] = useState(false);
-            const [modalType, setModalType] = useState('plant'); 
+            const [modalType, setModalType] = useState('plant');
             const [editingItem, setEditingItem] = useState(null);
             const [tempImage, setTempImage] = useState('');
-            const fileInputRef = useRef(null);
-
-            const [isSelectMode, setIsSelectMode] = useState(false);
-            const [selectedIds, setSelectedIds] = useState([]);
-            const [deleteConfirm, setDeleteConfirm] = useState({ show: false, ids: [], type: null, title: '' });
-
-            // LOGIKA GENERATE ID BERDASARKAN JUMLAH KATA
-            const generateSmartId = (name) => {
-                const words = name.trim().split(/\s+/).filter(w => w.length > 0);
-                let prefix = "";
-                if (words.length >= 3) { prefix = (words[0][0] + words[1][0] + words[2][0]); } 
-                else if (words.length === 2) { prefix = (words[0][0] + words[1].substring(0, 2)); } 
-                else if (words.length === 1) { prefix = words[0].substring(0, 3); } 
-                else { prefix = "PLT"; }
-                prefix = prefix.toUpperCase().padEnd(3, 'X');
-                const count = plants.filter(p => p.id.startsWith(prefix)).length;
-                return `${prefix}-${(count + 1).toString().padStart(3, '0')}`;
-            };
+            const fileRef = useRef(null);
 
             useEffect(() => {
-                if (!auth) { 
-                    setIsLoading(false); 
-                    setIsOnline(false);
-                    return; 
-                }
+                if (!auth) { setIsLoading(false); return; }
                 const initAuth = async () => {
                     try {
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -170,339 +130,249 @@
                         } else {
                             await auth.signInAnonymously();
                         }
-                    } catch (e) {
-                        setIsOnline(false);
-                    }
+                    } catch (e) { setIsOnline(false); }
                 };
                 initAuth();
-                const unsubscribe = auth.onAuthStateChanged((u) => {
+                const unsubscribe = auth.onAuthStateChanged(u => {
                     setUser(u);
-                    if (u) {
-                        setIsOnline(true);
-                    } else {
-                        setIsOnline(false);
-                    }
+                    setIsOnline(!!u);
                 });
                 return () => unsubscribe();
             }, []);
 
             useEffect(() => {
-                if (db && user) {
-                    const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
-                    const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
-                    const unsubPlants = plantsRef.onSnapshot((snap) => {
-                        if (snap.size > 0) setPlants(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                        setIsLoading(false);
-                    }, () => setIsOnline(false));
-
-                    const unsubLogs = logsRef.onSnapshot((snap) => {
-                        if (snap.size > 0) {
-                            const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                            data.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
-                            setLogs(data);
-                        }
-                    }, () => setIsOnline(false));
-                    return () => { unsubPlants(); unsubLogs(); };
-                } else {
-                    const localPlants = JSON.parse(localStorage.getItem('plants'));
-                    const localLogs = JSON.parse(localStorage.getItem('logs'));
-                    if (localPlants && localPlants.length > 0) setPlants(localPlants);
-                    if (localLogs) setLogs(localLogs);
+                if (!user || !db) {
+                    if (!user) {
+                         const lp = JSON.parse(localStorage.getItem('plants'));
+                         const ll = JSON.parse(localStorage.getItem('logs'));
+                         if (lp) setPlants(lp); if (ll) setLogs(ll);
+                    }
                     setIsLoading(false);
+                    return;
                 }
+
+                setIsLoading(true);
+                const baseRef = db.collection('artifacts').doc(appId).collection('public').doc('data');
+                
+                const unsubP = baseRef.collection('plants').onSnapshot(snap => {
+                    if (!snap.empty) setPlants(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                    setIsLoading(false);
+                }, () => setIsOnline(false));
+
+                const unsubL = baseRef.collection('logs').onSnapshot(snap => {
+                    const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    data.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+                    if(data.length > 0) setLogs(data);
+                }, () => setIsOnline(false));
+
+                return () => { unsubP(); unsubL(); };
             }, [user]);
 
-            const calculateAge = (dateString) => {
-                const start = new Date(dateString);
+            const calculateAge = (date) => {
+                const start = new Date(date);
                 const now = new Date();
-                start.setHours(0, 0, 0, 0);
+                start.setHours(0,0,0,0);
                 return Math.max(0, Math.floor((now - start) / (1000 * 60 * 60 * 24)));
             };
 
-            const handleFileChange = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => setTempImage(reader.result);
-                    reader.readAsDataURL(file);
+            // LOGIKA PENGKODEAN SESUAI KESEPAKATAN
+            const generateId = (name) => {
+                const words = name.trim().split(/\s+/).filter(w => w.length > 0);
+                let prefix = "";
+                
+                if (words.length >= 3) {
+                    // Kasus 3 suku kata atau lebih: Ambil huruf pertama tiap kata (3 kata pertama)
+                    prefix = words[0][0] + words[1][0] + words[2][0];
+                } else if (words.length === 2) {
+                    // Kasus 2 suku kata: 1 huruf kata pertama + 2 huruf kata kedua
+                    prefix = words[0][0] + words[1].substring(0, 2);
+                } else if (words.length === 1) {
+                    // Kasus 1 suku kata: 3 huruf awal
+                    prefix = words[0].substring(0, 3);
+                } else {
+                    prefix = "PLT";
                 }
+                
+                prefix = prefix.toUpperCase().padEnd(3, 'X');
+                const count = plants.filter(x => x.id.startsWith(prefix)).length;
+                return `${prefix}-${(count + 1).toString().padStart(3, '0')}`;
             };
 
-            const handleSavePlant = async (e) => {
+            const handleSave = async (e) => {
                 e.preventDefault();
-                const formData = new FormData(e.target);
-                const nama = formData.get('nama');
-                const foto = tempImage || (editingItem ? editingItem.foto : '');
-                const plantData = {
-                    nama, varietas: formData.get('varietas'), media: formData.get('media'), 
-                    tanggal: formData.get('tanggal'), status: formData.get('status'), foto 
-                };
-                if (db && user && isOnline) {
-                    const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
-                    if (editingItem) { await plantsRef.doc(editingItem.id).set(plantData, { merge: true }); } 
-                    else { await plantsRef.doc(generateSmartId(nama)).set(plantData); }
-                } else {
-                    const newPlants = [...plants];
-                    if (editingItem) {
-                        const idx = newPlants.findIndex(p => p.id === editingItem.id);
-                        newPlants[idx] = { ...editingItem, ...plantData };
-                    } else { newPlants.push({ id: generateSmartId(nama), ...plantData }); }
-                    setPlants(newPlants);
-                    localStorage.setItem('plants', JSON.stringify(newPlants));
-                }
-                closeModals();
-            };
+                const f = new FormData(e.target);
+                const data = Object.fromEntries(f.entries());
+                data.foto = tempImage || editingItem?.foto || '';
 
-            const handleSaveLog = async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const pId = formData.get('plantId');
-                const kond = formData.get('kondisi');
-                const foto = tempImage || (editingItem ? editingItem.foto : '');
-                const logData = {
-                    plantId: pId, tanggal: formData.get('tanggal'), tinggi: Number(formData.get('tinggi')), 
-                    daun: Number(formData.get('daun')), fase: formData.get('fase'), kondisi: kond, foto
-                };
-                if (db && user && isOnline) {
-                    const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
-                    const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
-                    if (editingItem) { await logsRef.doc(editingItem.id).set(logData, { merge: true }); } 
-                    else { await logsRef.add(logData); }
-                    await plantsRef.doc(pId).set({ status: kond === 'Mati' ? 'Mati' : 'Hidup' }, { merge: true });
-                } else {
-                    const newLogs = [...logs];
-                    if (editingItem) {
-                        const idx = newLogs.findIndex(l => l.id === editingItem.id);
-                        newLogs[idx] = { ...editingItem, ...logData };
-                    } else { newLogs.push({ id: Date.now().toString(), ...logData }); }
-                    setLogs(newLogs);
-                    localStorage.setItem('logs', JSON.stringify(newLogs));
-                    const newPlants = plants.map(p => p.id === pId ? { ...p, status: kond === 'Mati' ? 'Mati' : 'Hidup' } : p);
-                    setPlants(newPlants);
-                    localStorage.setItem('plants', JSON.stringify(newPlants));
-                }
-                closeModals();
-            };
-
-            const executeDelete = async () => {
-                if (db && user && isOnline) {
-                    const batch = db.batch();
-                    const plantsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
-                    const logsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
-                    if (deleteConfirm.type === 'plant') {
-                        deleteConfirm.ids.forEach(id => {
-                            batch.delete(plantsRef.doc(id));
-                            logs.filter(l => l.plantId === id).forEach(l => batch.delete(logsRef.doc(l.id)));
-                        });
-                    } else { deleteConfirm.ids.forEach(id => batch.delete(logsRef.doc(id))); }
-                    await batch.commit();
-                } else {
-                    if (deleteConfirm.type === 'plant') {
-                        const newPlants = plants.filter(p => !deleteConfirm.ids.includes(p.id));
-                        setPlants(newPlants);
-                        localStorage.setItem('plants', JSON.stringify(newPlants));
+                if (modalType === 'plant') {
+                    if (isOnline && db && user) {
+                        const ref = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('plants');
+                        if (editingItem) await ref.doc(editingItem.id).set(data, {merge: true});
+                        else await ref.doc(generateId(data.nama)).set(data);
                     } else {
-                        const newLogs = logs.filter(l => !deleteConfirm.ids.includes(l.id));
-                        setLogs(newLogs);
-                        localStorage.setItem('logs', JSON.stringify(newLogs));
+                        const newP = [...plants];
+                        if (editingItem) newP[newP.findIndex(x => x.id === editingItem.id)] = {...editingItem, ...data};
+                        else newP.push({id: generateId(data.nama), ...data});
+                        setPlants(newP); localStorage.setItem('plants', JSON.stringify(newP));
+                    }
+                } else {
+                    if (isOnline && db && user) {
+                        const ref = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('logs');
+                        if (editingItem) await ref.doc(editingItem.id).set(data, {merge: true});
+                        else await ref.add(data);
+                    } else {
+                        const newL = [...logs];
+                        if (editingItem) newL[newL.findIndex(x => x.id === editingItem.id)] = {...editingItem, ...data};
+                        else newL.unshift({id: Date.now(), ...data});
+                        setLogs(newL); localStorage.setItem('logs', JSON.stringify(newL));
                     }
                 }
-                setSelectedIds([]);
-                setIsSelectMode(false);
-                setDeleteConfirm({ show: false, ids: [], type: null, title: '' });
+                setShowModal(false); setEditingItem(null); setTempImage('');
             };
 
-            const resetToDefault = () => {
-                setPlants(INITIAL_PLANTS);
-                setLogs(INITIAL_LOGS);
-                localStorage.setItem('plants', JSON.stringify(INITIAL_PLANTS));
-                localStorage.setItem('logs', JSON.stringify(INITIAL_LOGS));
+            const handleDelete = async (id, type) => {
+                if (isOnline && db && user) {
+                    const ref = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(type === 'plant' ? 'plants' : 'logs');
+                    await ref.doc(id).delete();
+                } else {
+                    if (type === 'plant') {
+                        const newP = plants.filter(x => x.id !== id);
+                        setPlants(newP); localStorage.setItem('plants', JSON.stringify(newP));
+                    } else {
+                        const newL = logs.filter(x => x.id !== id);
+                        setLogs(newL); localStorage.setItem('logs', JSON.stringify(newL));
+                    }
+                }
             };
 
-            const toggleSelect = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-            const toggleSelectAll = () => setSelectedIds(selectedIds.length === plants.length ? [] : plants.map(p => p.id));
-            const closeModals = () => { setShowModal(false); setEditingItem(null); setTempImage(''); };
-
-            if (isLoading) {
-                return (
-                    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 text-center p-10">
-                        <Icon name="flower" size={48} className="text-pink-400 animate-bounce mb-4 mx-auto" />
-                        <div className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Memuat Kebun...</div>
-                    </div>
-                );
-            }
+            if (isLoading && !user) return <div className="flex flex-col items-center justify-center min-h-screen text-slate-400 font-black uppercase text-xs animate-pulse">Menghubungkan...</div>;
 
             return (
-                <div className="max-w-md mx-auto min-h-screen bg-slate-50 pb-24 shadow-2xl flex flex-col relative overflow-x-hidden">
-                    <input type="file" ref={fileInputRef} accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" />
-                    
+                <div className="max-w-md mx-auto min-h-screen bg-slate-50 flex flex-col relative pb-24 shadow-2xl overflow-x-hidden">
+                    <input type="file" ref={fileRef} className="hidden" accept="image/*" capture="environment" onChange={e => {
+                        const r = new FileReader(); r.onload = () => setTempImage(r.result); r.readAsDataURL(e.target.files[0]);
+                    }}/>
+
                     <header className="bg-white p-6 rounded-b-[2.5rem] shadow-sm sticky top-0 z-20 border-b border-slate-100">
                         <div className="flex justify-between items-center mb-6">
-                            <div className="flex flex-col">
-                                <div className="flex items-center gap-2">
-                                    <h1 className="text-2xl font-bold text-emerald-800 flex items-center gap-2">
-                                        <Icon name="flower" size={24} className="text-pink-500 fill-pink-500" /> TikaPlant's
-                                    </h1>
-                                    <div className={`p-1.5 rounded-full shadow-sm border transition-all ${isOnline ? 'text-emerald-500 bg-emerald-50 border-emerald-100' : 'text-slate-300 bg-slate-50 border-slate-100'}`} title={isOnline ? "Data Tersinkron ke Awan" : "Mode Offline (Data tersimpan di HP ini)"}>
-                                        <Icon name={isOnline ? "cloud" : "lock"} size={14} />
+                            <div>
+                                <h1 className="text-2xl font-bold text-emerald-800 flex items-center gap-2 tracking-tight">
+                                    <Icon name="flower" size={26} /> TikaPlant's
+                                </h1>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <div className={`p-1 rounded-full ${isOnline ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-50 text-slate-300 border border-slate-100'}`}>
+                                        <Icon name={isOnline ? 'cloud' : 'lock'} size={12}/>
                                     </div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{isOnline ? 'Tersinkron' : 'Offline'}</span>
                                 </div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sistem Monitoring Kebun</p>
                             </div>
-                            <div className="flex items-center gap-2">
-                                {activeTab === 'master' && (
-                                    <button onClick={() => { setIsSelectMode(!isSelectMode); setSelectedIds([]); }} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isSelectMode ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Icon name={isSelectMode ? "check-circle" : "check"} size={20} /></button>
-                                )}
-                                <div className="flex gap-2 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100 shadow-inner">
-                                    <div className="pr-2 border-r border-slate-200 text-center">
-                                        <div className="text-[9px] font-bold text-slate-400 uppercase mb-1 leading-none">Hidup</div>
-                                        <div className="text-lg font-bold text-emerald-600 leading-none">{plants.filter(p => p.status === 'Hidup').length}</div>
-                                    </div>
-                                    <div className="pl-2 text-center">
-                                        <div className="text-[9px] font-bold text-slate-400 uppercase mb-1 leading-none">Total</div>
-                                        <div className="text-lg font-bold text-slate-500 leading-none">{plants.length}</div>
-                                    </div>
+                            <div className="flex gap-2 bg-slate-50 p-2 px-3 rounded-2xl border border-slate-100 text-center">
+                                <div className="pr-2 border-r border-slate-200">
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Hidup</div>
+                                    <div className="text-lg font-black text-emerald-600 leading-none">{plants.filter(x => x.status === 'Hidup').length}</div>
+                                </div>
+                                <div className="pl-2">
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Total</div>
+                                    <div className="text-lg font-black text-slate-500 leading-none">{plants.length}</div>
                                 </div>
                             </div>
                         </div>
                         <nav className="flex gap-8">
-                            <button onClick={() => { setActiveTab('master'); setIsSelectMode(false); }} className={`pb-2 text-xs font-bold uppercase relative transition-all ${activeTab === 'master' ? 'text-emerald-700' : 'text-slate-300'}`}>Daftar Tanaman{activeTab === 'master' && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full" />}</button>
-                            <button onClick={() => { setActiveTab('logs'); setIsSelectMode(false); }} className={`pb-2 text-xs font-bold uppercase relative transition-all ${activeTab === 'logs' ? 'text-emerald-700' : 'text-slate-300'}`}>Log Harian{activeTab === 'logs' && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full" />}</button>
+                            {['master', 'logs'].map(t => (
+                                <button key={t} onClick={() => setActiveTab(t)} className={`pb-2 text-xs font-bold uppercase tracking-widest relative transition-all ${activeTab === t ? 'text-emerald-700' : 'text-slate-300'}`}>
+                                    {t === 'master' ? 'Tanaman' : 'Log Harian'}
+                                    {activeTab === t && <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-600 rounded-full"/>}
+                                </button>
+                            ))}
                         </nav>
                     </header>
 
-                    <div className="p-4 flex-1">
-                        {!isOnline && (
-                           <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3 fade-in">
-                               <Icon name="alert" size={18} className="text-amber-500 shrink-0 mt-0.5" />
-                               <div>
-                                   <div className="text-[10px] font-bold text-amber-800 uppercase tracking-tight">Mode Offline Aktif</div>
-                                   <p className="text-[9px] text-amber-600 leading-relaxed font-medium">Data Anda aman dan tersimpan di memori HP ini. Masukkan config Firebase di Vercel untuk mengaktifkan sinkronisasi awan.</p>
-                               </div>
-                           </div>
-                        )}
-
-                        {activeTab === 'master' ? (
-                            <div className="space-y-4 fade-in">
-                                {isSelectMode && (
-                                    <div className="flex justify-between items-center px-2 mb-2">
-                                        <button onClick={toggleSelectAll} className="text-xs font-bold text-emerald-700 uppercase">{selectedIds.length === plants.length ? "Batal" : "Semua"}</button>
-                                        <span className="text-[10px] font-black text-slate-400 tracking-widest">{selectedIds.length} Terpilih</span>
-                                    </div>
-                                )}
-                                {plants.map(p => (
-                                    <div key={p.id} onClick={() => isSelectMode && toggleSelect(p.id)} className={`bg-white p-4 rounded-3xl shadow-md border transition-all relative ${p.status === 'Mati' ? 'opacity-60 grayscale bg-slate-50' : ''} ${isSelectMode && selectedIds.includes(p.id) ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-100'}`}>
-                                        {isSelectMode && (
-                                            <div className="absolute top-4 left-4 z-10"><div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 ${selectedIds.includes(p.id) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200'}`}>{selectedIds.includes(p.id) && <Icon name="check" size={14} />}</div></div>
-                                        )}
-                                        <div className={`flex items-center gap-3 mb-3 pb-2 border-b border-slate-50 ${isSelectMode ? 'ml-8' : ''}`}>
-                                            <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden border shadow-inner flex-shrink-0 flex items-center justify-center">{p.foto ? <img src={p.foto} className="w-full h-full object-cover" /> : <Icon name="image" size={18} className="text-slate-300" />}</div>
-                                            <div className="flex-1 min-w-0"><div className="text-xs font-bold text-emerald-800 truncate uppercase tracking-tight">{p.id}</div><div className="text-[9px] text-slate-400 font-bold uppercase">Mulai: {p.tanggal}</div></div>
-                                            <span className={`text-[10px] font-bold px-3 py-1 rounded-lg uppercase border ${p.status === 'Mati' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{p.status}</span>
-                                        </div>
-                                        <div className={`flex justify-between items-end text-xs font-bold text-slate-600 ${isSelectMode ? 'ml-8' : ''}`}>
-                                            <div className="space-y-0.5"><div className="text-[15px] font-black text-slate-800 leading-tight truncate max-w-[150px]">{p.nama}</div><div className="flex gap-2 items-center text-[10px] text-slate-400 font-medium"><span className="flex items-center gap-1"><Icon name="leaf" size={10} className="text-emerald-400"/> {p.varietas}</span><span className="w-1 h-1 bg-slate-200 rounded-full"></span><span>{calculateAge(p.tanggal)} HARI</span></div></div>
-                                            {!isSelectMode && (
-                                                <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                    <button onClick={(e) => { e.stopPropagation(); setModalType('plant'); setEditingItem(p); setTempImage(p.foto); setShowModal(true); }} className="w-10 h-10 flex items-center justify-center bg-blue-100 text-blue-700 rounded-xl border border-blue-200"><Icon name="edit-2" size={18} /></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ show: true, ids: [p.id], type: 'plant', title: p.nama }); }} className="w-10 h-10 flex items-center justify-center bg-red-100 text-red-700 rounded-xl border border-red-200"><Icon name="trash-2" size={18} /></button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-
-                                {plants.length < 5 && (
-                                    <div className="py-10 text-center">
-                                        <button onClick={resetToDefault} className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest border border-emerald-100 px-4 py-2 rounded-xl bg-emerald-50">Pulihkan 18 Tanaman Awal</button>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="space-y-4 fade-in">
-                                {logs.map((l, idx) => (
-                                    <div key={idx} className="bg-white p-4 rounded-3xl shadow-md border border-slate-100">
-                                        <div className="flex items-center gap-3 mb-3 pb-2 border-b border-slate-50">
-                                            <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden border flex items-center justify-center">{l.foto ? <img src={l.foto} className="w-full h-full object-cover" /> : <Icon name="camera" size={18} className="text-slate-300" />}</div>
-                                            <div className="flex-1 min-w-0"><div className="text-xs font-bold text-emerald-800 truncate uppercase tracking-tight">{l.plantId}</div><div className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Cek: {l.tanggal}</div></div>
-                                            <span className="text-[10px] font-bold px-3 py-1 rounded-lg bg-emerald-50 text-emerald-600 uppercase border border-emerald-100">{l.fase}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-xs font-bold text-slate-600">
-                                            <div className="flex gap-4"><span className="flex items-center gap-1"><Icon name="trending-up" size={12} className="text-emerald-400"/> {l.tinggi} cm</span><span className="flex items-center gap-1"><Icon name="leaf" size={12} className="text-emerald-400"/> {l.daun} Daun</span></div>
-                                            <div className="flex items-center gap-2">
-                                                <span className={`${l.kondisi === 'Mati' ? 'text-rose-600 bg-rose-50' : 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-md`}>{l.kondisi}</span>
-                                                <div className="flex gap-1 border-l pl-2 border-slate-100">
-                                                    <button onClick={() => { setModalType('log'); setEditingItem(l); setTempImage(l.foto); setShowModal(true); }} className="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl border border-blue-100"><Icon name="edit-3" size={16}/></button>
-                                                    <button onClick={() => setDeleteConfirm({ show: true, ids: [l.id || idx], type: 'log', title: `Log ${l.plantId}` })} className="w-9 h-9 flex items-center justify-center bg-red-50 text-red-600 rounded-xl border border-red-100"><Icon name="trash-2" size={16}/></button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {isSelectMode && (
-                        <div className="fixed bottom-0 left-0 right-0 p-4 pb-8 bg-white border-t border-slate-100 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-40 selection-bar">
-                            <div className="max-w-md mx-auto flex gap-3">
-                                <button onClick={() => { setIsSelectMode(false); setSelectedIds([]); }} className="flex-1 bg-slate-100 text-slate-500 p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px]">Batal</button>
-                                <button onClick={() => setDeleteConfirm({ show: true, ids: selectedIds, type: 'plant', title: `${selectedIds.length} Item` })} disabled={selectedIds.length === 0} className={`flex-[2] p-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg transition-all ${selectedIds.length > 0 ? 'bg-rose-600 text-white shadow-rose-200 active:scale-95' : 'bg-slate-200 text-slate-400'}`}>Hapus {selectedIds.length} Item</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {!isSelectMode && (
-                        <button onClick={() => { setModalType(activeTab === 'master' ? 'plant' : 'log'); setEditingItem(null); setTempImage(''); setShowModal(true); }} className="fixed bottom-8 right-8 w-16 h-16 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-30 border-4 border-white"><Icon name="plus" size={32} /></button>
-                    )}
-
-                    {deleteConfirm.show && (
-                        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6 text-center">
-                            <div className="bg-white w-full max-w-xs rounded-[2rem] p-8 shadow-2xl modal-up">
-                                <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="alert" size={32} /></div>
-                                <h3 className="text-lg font-black text-slate-800 mb-2 uppercase tracking-tighter">Hapus Data?</h3>
-                                <p className="text-slate-500 text-[10px] mb-6 px-2 font-medium">Yakin ingin menghapus <span className="font-bold text-rose-600">"{deleteConfirm.title}"</span>?</p>
-                                <div className="flex flex-col gap-2">
-                                    <button onClick={executeDelete} className="w-full bg-rose-600 text-white p-4 rounded-2xl font-bold uppercase text-[10px] shadow-lg active:scale-95">Ya, Hapus</button>
-                                    <button onClick={() => setDeleteConfirm({ show: false, ids: [], type: null, title: '' })} className="w-full bg-slate-100 text-slate-500 p-4 rounded-2xl font-bold uppercase text-[10px] active:scale-95">Batal</button>
+                    <main className="p-4 flex-1 space-y-4 fade-in">
+                        {activeTab === 'master' ? plants.map(p => (
+                            <div key={p.id} className={`bg-white p-4 rounded-[2rem] border shadow-sm flex items-center gap-4 ${p.status === 'Mati' ? 'opacity-50 grayscale bg-slate-50' : 'border-slate-100'}`}>
+                                <div className="w-14 h-14 rounded-2xl bg-slate-100 overflow-hidden border border-slate-200 flex-shrink-0">
+                                    {p.foto ? <img src={p.foto} className="w-full h-full object-cover"/> : <Icon name="flower" size={24} className="m-auto mt-4"/>}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] font-black text-emerald-800 uppercase tracking-tight">{p.id}</div>
+                                    <div className="text-[15px] font-extrabold text-slate-800 truncate my-0.5">{p.nama}</div>
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{p.varietas} | {calculateAge(p.tanggal)} Hari</div>
+                                </div>
+                                <div className="flex gap-1">
+                                    <button onClick={() => {setEditingItem(p); setTempImage(p.foto); setModalType('plant'); setShowModal(true);}} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 transition-all active:scale-90"><Icon name="edit" size={16}/></button>
+                                    <button onClick={() => handleDelete(p.id, 'plant')} className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 transition-all active:scale-90"><Icon name="trash" size={16}/></button>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        )) : logs.map(l => (
+                            <div key={l.id} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm space-y-3">
+                                <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden border">
+                                            {l.foto ? <img src={l.foto} className="w-full h-full object-cover"/> : <Icon name="flower" size={22} className="m-auto mt-2" />}
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] font-black text-emerald-800 uppercase leading-none">{l.plantId}</div>
+                                            <div className="text-[9px] font-bold text-slate-400 mt-1">{l.tanggal}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => {setEditingItem(l); setTempImage(l.foto); setModalType('log'); setShowModal(true);}} className="p-1.5 bg-blue-50 text-blue-500 rounded-lg transition-all active:scale-90"><Icon name="edit" size={12}/></button>
+                                        <button onClick={() => handleDelete(l.id, 'log')} className="p-1.5 bg-rose-50 text-rose-500 rounded-lg transition-all active:scale-90"><Icon name="trash" size={12}/></button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                                    <div className="bg-slate-50 p-2 rounded-2xl"><div className="text-[8px] text-slate-400 uppercase font-black mb-1">Tinggi</div><div className="font-bold">{l.tinggi} cm</div></div>
+                                    <div className="bg-slate-50 p-2 rounded-2xl"><div className="text-[8px] text-slate-400 uppercase font-black mb-1">Daun</div><div className="font-bold">{l.daun} Helai</div></div>
+                                    <div className="bg-emerald-50 p-2 rounded-2xl text-emerald-700"><div className="text-[8px] opacity-60 uppercase font-black mb-1">Fase</div><div className="font-bold">{l.fase}</div></div>
+                                </div>
+                            </div>
+                        ))}
+                    </main>
+
+                    <button onClick={() => {setEditingItem(null); setModalType(activeTab === 'master' ? 'plant' : 'log'); setShowModal(true);}} className="fixed bottom-8 right-8 w-16 h-16 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all z-30 border-4 border-white">
+                        <Icon name="plus" size={28}/>
+                    </button>
 
                     {showModal && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-[4px] z-50 flex items-center justify-center p-6">
-                            <div className="bg-white w-full rounded-[2.5rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto fade-in">
-                                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-slate-800 uppercase text-base">{editingItem ? 'Edit' : 'Tambah'} {modalType === 'plant' ? 'Tanaman' : 'Log'}</h3><button onClick={closeModals} className="text-slate-400"><Icon name="x" size={20} /></button></div>
-                                <form onSubmit={modalType === 'plant' ? handleSavePlant : handleSaveLog} className="space-y-5">
-                                    <div className="flex flex-col items-center p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 cursor-pointer" onClick={() => fileInputRef.current.click()}><div className="w-24 h-24 rounded-2xl bg-white border-4 shadow-lg overflow-hidden flex items-center justify-center mb-3">{tempImage ? <img src={tempImage} className="w-full h-full object-cover" /> : <Icon name="camera" size={40} className="text-slate-200" />}</div><div className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Ambil Foto HP</div></div>
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                            <div className="bg-white w-full rounded-[2.5rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto modal-up">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest">{editingItem ? 'Edit' : 'Tambah'} {modalType === 'plant' ? 'Tanaman' : 'Log'}</h3>
+                                    <button onClick={()=>setShowModal(false)} className="text-slate-300"><Icon name="x" size={20}/></button>
+                                </div>
+                                <form onSubmit={handleSave} className="space-y-4">
+                                    <div className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 cursor-pointer" onClick={() => fileRef.current.click()}>
+                                        <div className="w-20 h-20 bg-white rounded-2xl border-4 border-white shadow-lg overflow-hidden flex items-center justify-center">
+                                            {tempImage ? <img src={tempImage} className="w-full h-full object-cover"/> : <Icon name="camera" size={32} className="text-slate-200"/>}
+                                        </div>
+                                        <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Ganti Foto</div>
+                                        <input type="file" ref={fileRef} className="hidden" accept="image/*" capture="environment" onChange={(e)=>{const r=new FileReader(); r.onload=()=>setTempImage(r.result); r.readAsDataURL(e.target.files[0]);}}/>
+                                    </div>
                                     {modalType === 'plant' ? (
-                                        <div className="space-y-4">
-                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nama Tanaman</label><input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border outline-none font-semibold transition-all" /></div>
+                                        <Fragment>
+                                            <input name="nama" defaultValue={editingItem?.nama} required className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold text-slate-700" placeholder="Nama Tanaman"/>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Varietas</label><input name="varietas" defaultValue={editingItem?.varietas} className="w-full p-4 bg-slate-50 rounded-2xl border outline-none" /></div>
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Status</label><select name="status" defaultValue={editingItem?.status || 'Hidup'} className="w-full p-4 bg-slate-50 rounded-2xl border font-bold"><option>Hidup</option><option>Mati</option></select></div>
+                                                <input name="varietas" defaultValue={editingItem?.varietas} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold" placeholder="Varietas"/>
+                                                <select name="status" defaultValue={editingItem?.status || 'Hidup'} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold">
+                                                    <option>Hidup</option><option>Mati</option>
+                                                </select>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Media</label><select name="media" defaultValue={editingItem?.media || 'Tanah'} className="w-full p-4 bg-slate-50 rounded-2xl border"><option>Tanah</option><option>Hidroponik</option></select></div>
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tgl Tanam</label><input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border" /></div>
-                                            </div>
-                                        </div>
+                                            <input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold"/>
+                                        </Fragment>
                                     ) : (
-                                        <div className="space-y-4 text-sm">
-                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tanaman</label><select name="plantId" defaultValue={editingItem?.plantId} className="w-full p-4 bg-slate-50 rounded-2xl border font-bold">{plants.map(p => <option key={p.id} value={p.id}>{p.id} - {p.nama}</option>)}</select></div>
+                                        <Fragment>
+                                            <select name="plantId" defaultValue={editingItem?.plantId} className="w-full p-4 bg-emerald-50 text-emerald-800 rounded-2xl border-none outline-none font-black uppercase">
+                                                {plants.map(p => <option key={p.id} value={p.id}>{p.id} - {p.nama}</option>)}
+                                            </select>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tinggi (cm)</label><input type="number" step="0.1" name="tinggi" defaultValue={editingItem?.tinggi} className="w-full p-4 bg-slate-50 rounded-2xl border" /></div>
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Daun</label><input type="number" name="daun" defaultValue={editingItem?.daun} className="w-full p-4 bg-slate-50 rounded-2xl border" /></div>
+                                                <input name="tinggi" type="number" step="0.1" defaultValue={editingItem?.tinggi} placeholder="Tinggi (cm)" required className="p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold"/>
+                                                <input name="daun" type="number" defaultValue={editingItem?.daun} placeholder="Daun" required className="p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold"/>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-emerald-600 uppercase ml-1">Fase</label><select name="fase" defaultValue={editingItem?.fase || 'Semai'} className="w-full p-4 bg-emerald-50 text-emerald-700 rounded-2xl font-bold"><option>Semai</option><option>Vegetatif</option><option>Berbunga</option><option>Berbuah</option><option>Panen</option></select></div>
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-rose-600 uppercase ml-1">Kondisi</label><select name="kondisi" defaultValue={editingItem?.kondisi || 'Sehat'} className="w-full p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold"><option value="Sehat">Sehat</option><option value="Kuning">Kuning</option><option value="Layu">Layu</option><option value="Mati">MATI</option></select></div>
-                                            </div>
-                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tanggal Cek</label><input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border" /></div>
-                                        </div>
+                                            <select name="fase" defaultValue={editingItem?.fase || 'Semai'} className="w-full p-4 bg-emerald-50 text-emerald-700 rounded-2xl border-none outline-none font-black"><option>Semai</option><option>Vegetatif</option><option>Bunga</option><option>Buah</option><option>Panen</option></select>
+                                            <input type="date" name="tanggal" defaultValue={editingItem?.tanggal || new Date().toISOString().split('T')[0]} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold"/>
+                                        </Fragment>
                                     )}
-                                    <button type="submit" className="w-full bg-emerald-600 text-white p-5 rounded-[1.5rem] font-bold uppercase text-[11px] shadow-xl active:scale-95 transition-all">Simpan Data</button>
+                                    <button type="submit" className="w-full bg-emerald-600 text-white p-5 rounded-[1.5rem] font-black uppercase text-[11px] shadow-xl active:scale-95 transition-all mt-4">Simpan Data</button>
                                 </form>
                             </div>
                         </div>
