@@ -115,24 +115,29 @@
                 if (!auth) return;
                 auth.signInAnonymously()
                     .then(res => setUser(res.user))
-                    .catch(e => setDbError("Koneksi Gagal: " + e.message));
+                    .catch(e => {
+                        console.error(e);
+                        if (e.code === 'auth/configuration-not-found') {
+                            setDbError("Fitur Login Anonim belum aktif.");
+                        } else {
+                            setDbError("Koneksi Gagal: " + e.message);
+                        }
+                    });
             }, []);
 
             useEffect(() => {
                 if (!user || !db) return;
                 const baseRef = db.collection('artifacts').doc(MY_APP_ID).collection('public').doc('data');
                 
-                // Monitor Tanaman
                 const unsubP = baseRef.collection('plants').onSnapshot(snap => {
                     if (!snap.empty) setPlants(snap.docs.map(d => ({id: d.id, ...d.data()})));
                     setIsOnline(true);
                     setDbError(null);
                 }, (err) => {
                     setIsOnline(false);
-                    if (err.code === 'permission-denied') setDbError("Akses Ditolak: Cek Rules di Firebase Console.");
+                    if (err.code === 'permission-denied') setDbError("Akses Ditolak: Cek Rules di Firestore.");
                 });
 
-                // Monitor Log Harian
                 const unsubL = baseRef.collection('logs').onSnapshot(snap => {
                     const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
                     data.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
@@ -180,7 +185,7 @@
             return (
                 <div className="max-w-md mx-auto min-h-screen bg-slate-50 flex flex-col relative pb-24 shadow-2xl overflow-x-hidden">
                     <header className="bg-white p-6 rounded-b-[2.5rem] shadow-sm sticky top-0 z-20 border-b border-slate-100">
-                        <div className="flex justify-between items-center mb-6">
+                        <div className="flex justify-between items-start mb-6">
                             <div>
                                 <h1 className="text-2xl font-bold text-emerald-800 flex items-center gap-2 tracking-tight">
                                     <Icon name="flower" size={26} /> TikaPlant's
@@ -192,9 +197,21 @@
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{isOnline ? 'Awan Hijau Aktif' : 'OFFLINE'}</span>
                                 </div>
                             </div>
-                            <div className="bg-slate-50 p-2 px-4 rounded-2xl border border-slate-100 text-center">
-                                <div className="text-[9px] font-bold text-slate-400 uppercase mb-1 leading-none tracking-tighter">Hidup</div>
-                                <div className="text-xl font-black text-emerald-600 leading-none">{plants.filter(x => x.status === 'Hidup').length}</div>
+                            
+                            {/* STATISTIK HEADER BARU */}
+                            <div className="flex gap-2">
+                                <div className="bg-slate-50 p-2 px-3 rounded-2xl border border-slate-100 text-center shadow-sm">
+                                    <div className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-1">Hidup</div>
+                                    <div className="text-sm font-black text-emerald-600 leading-none">{plants.filter(x => x.status === 'Hidup').length}</div>
+                                </div>
+                                <div className="bg-slate-50 p-2 px-3 rounded-2xl border border-slate-100 text-center shadow-sm">
+                                    <div className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-1">Mati</div>
+                                    <div className="text-sm font-black text-rose-500 leading-none">{plants.filter(x => x.status === 'Mati').length}</div>
+                                </div>
+                                <div className="bg-slate-50 p-2 px-3 rounded-2xl border border-slate-100 text-center shadow-sm">
+                                    <div className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-1">Total</div>
+                                    <div className="text-sm font-black text-slate-600 leading-none">{plants.length}</div>
+                                </div>
                             </div>
                         </div>
 
@@ -217,7 +234,7 @@
 
                     <main className="p-4 flex-1 space-y-4 fade-in">
                         {activeTab === 'master' ? (
-                            plants.length === 0 ? <div className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest">Belum ada data</div> :
+                            plants.length === 0 ? <div className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest leading-relaxed">Menunggu data dari awan...</div> :
                             plants.map(p => (
                                 <div key={p.id} className={`bg-white p-4 rounded-[2rem] border shadow-sm flex items-center gap-4 ${p.status === 'Mati' ? 'opacity-50 grayscale bg-slate-50' : 'border-slate-100'}`}>
                                     <div className="w-14 h-14 rounded-2xl bg-slate-100 overflow-hidden border border-slate-200 flex-shrink-0">
@@ -229,13 +246,13 @@
                                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{p.varietas}</div>
                                     </div>
                                     <div className="flex gap-1">
-                                        <button onClick={() => {setEditingItem(p); setTempImage(p.foto); setModalType('plant'); setShowModal(true);}} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 active:scale-90 transition-all"><Icon name="edit" size={16}/></button>
-                                        <button onClick={() => handleDelete(p.id, 'plant')} className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 active:scale-90 transition-all"><Icon name="trash" size={16}/></button>
+                                        <button onClick={() => {setEditingItem(p); setTempImage(p.foto); setModalType('plant'); setShowModal(true);}} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 active:scale-90 transition-all shadow-sm"><Icon name="edit" size={16}/></button>
+                                        <button onClick={() => handleDelete(p.id, 'plant')} className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 active:scale-90 transition-all shadow-sm"><Icon name="trash" size={16}/></button>
                                     </div>
                                 </div>
                             ))
                         ) : (
-                            logs.length === 0 ? <div className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest leading-relaxed px-10">Belum ada catatan log di awan. Klik (+) untuk menambah.</div> :
+                            logs.length === 0 ? <div className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest leading-relaxed px-10">Belum ada catatan log. Klik (+) untuk menambah.</div> :
                             logs.map(l => (
                                 <div key={l.id} className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-5">
                                     <div className="flex justify-between items-center">
@@ -255,15 +272,15 @@
                                     </div>
                                     
                                     <div className="grid grid-cols-3 gap-3">
-                                        <div className="bg-slate-50/70 p-3 rounded-2xl text-center border border-slate-100/50">
+                                        <div className="bg-slate-50/70 p-3 rounded-2xl text-center border border-slate-100/50 shadow-inner">
                                             <div className="text-[9px] text-slate-400 uppercase font-black mb-1.5 tracking-widest leading-none">TINGGI</div>
                                             <div className="font-extrabold text-slate-700 text-sm leading-none">{l.tinggi} cm</div>
                                         </div>
-                                        <div className="bg-slate-50/70 p-3 rounded-2xl text-center border border-slate-100/50">
+                                        <div className="bg-slate-50/70 p-3 rounded-2xl text-center border border-slate-100/50 shadow-inner">
                                             <div className="text-[9px] text-slate-400 uppercase font-black mb-1.5 tracking-widest leading-none">DAUN</div>
                                             <div className="font-extrabold text-slate-700 text-sm leading-none">{l.daun} Helai</div>
                                         </div>
-                                        <div className="bg-emerald-50/50 p-3 rounded-2xl text-center border border-emerald-100/50">
+                                        <div className="bg-emerald-50/50 p-3 rounded-2xl text-center border border-emerald-100/50 shadow-inner">
                                             <div className="text-[9px] text-emerald-600/60 uppercase font-black mb-1.5 tracking-widest leading-none">FASE</div>
                                             <div className="font-extrabold text-emerald-700 text-sm leading-none">{l.fase}</div>
                                         </div>
